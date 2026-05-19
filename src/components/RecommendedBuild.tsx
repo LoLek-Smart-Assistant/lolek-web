@@ -1,5 +1,5 @@
 import { motion } from 'framer-motion'
-import { BrainCircuit, ChevronRight, Sparkles } from 'lucide-react'
+import { BrainCircuit, ChevronRight } from 'lucide-react'
 
 import type { Recommendation } from '../data/mockRiot'
 

@@ -1,4 +1,4 @@
-import type { Assertion, AsymmetricMatchersContaining } from 'vitest'
+/* eslint-disable @typescript-eslint/no-empty-object-type, @typescript-eslint/no-explicit-any */
 import type { TestingLibraryMatchers } from '@testing-library/jest-dom/matchers'
 
 declare global {
@@ -11,7 +11,7 @@ declare global {
     interface AsymmetricMatchersContaining
       extends TestingLibraryMatchers<
         ReturnType<typeof expect.stringContaining>,
-        string
+        any
       > {}
   }
 }
