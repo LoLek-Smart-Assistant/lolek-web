@@ -6,6 +6,7 @@ import { RecommendedBuild } from '../../components/RecommendedBuild'
 import { Sidebar } from '../../components/Sidebar'
 import { TeamPanel } from '../../components/TeamPanel'
 import { initialChat, liveMatch, recommendation, teams } from '../../data/mockRiot'
+import authService from '../../services/authService'
 
 export function DashboardScreen() {
   const [authMode, setAuthMode] = useState<'login' | 'register'>('login')
@@ -17,7 +18,25 @@ export function DashboardScreen() {
   const [messages, setMessages] = useState(initialChat)
   const [pendingMessage, setPendingMessage] = useState('')
   const [isTyping, setIsTyping] = useState(false)
+  const [username, setUsername] = useState<string | null>(null)
+  const [isInitializing, setIsInitializing] = useState(true)
   const timeoutRef = useRef<number | null>(null)
+
+  // Initialize authentication on app load
+  useEffect(() => {
+    const initAuth = async () => {
+      try {
+        const user = await authService.initializeAuth()
+        if (user) {
+          setUsername(user.username)
+        }
+      } finally {
+        setIsInitializing(false)
+      }
+    }
+
+    initAuth()
+  }, [])
 
   useEffect(() => {
     return () => {
@@ -37,6 +56,20 @@ export function DashboardScreen() {
     timeoutRef.current = window.setTimeout(() => {
       setIsConnecting(false)
     }, 1400)
+  }
+
+  const handleAuthSuccess = (userData: { username: string; email: string }) => {
+    setUsername(userData.username)
+    setEmail(userData.email)
+    // Clear sensitive data after successful auth
+    setPassword('')
+  }
+
+  const handleLogout = () => {
+    setUsername(null)
+    setEmail('')
+    setPassword('')
+    setAuthMode('login')
   }
 
   const handleSendMessage = () => {
@@ -103,12 +136,15 @@ export function DashboardScreen() {
           riotId={riotId}
           tagline={tagline}
           isConnecting={isConnecting}
+          username={username}
           onAuthModeChange={setAuthMode}
           onEmailChange={setEmail}
           onPasswordChange={setPassword}
           onRiotIdChange={setRiotId}
           onTaglineChange={setTagline}
           onConnect={handleConnect}
+          onAuthSuccess={handleAuthSuccess}
+          onLogout={handleLogout}
         />
 
         <main className="space-y-6">

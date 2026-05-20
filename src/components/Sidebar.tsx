@@ -1,4 +1,6 @@
-import { ShieldCheck } from 'lucide-react'
+import { ShieldCheck, LogOut } from 'lucide-react'
+import { useState } from 'react'
+import { authService } from '../services'
 import { AuthPanel } from './AuthPanel'
 import { RiotConnectPanel } from './RiotConnectPanel'
 import { LolekIcon } from './LolekIcon'
@@ -10,12 +12,15 @@ type SidebarProps = {
   riotId: string
   tagline: string
   isConnecting: boolean
+  username?: string | null
   onAuthModeChange: (mode: 'login' | 'register') => void
   onEmailChange: (value: string) => void
   onPasswordChange: (value: string) => void
   onRiotIdChange: (value: string) => void
   onTaglineChange: (value: string) => void
   onConnect: () => void
+  onAuthSuccess?: (userData: { username: string; email: string }) => void
+  onLogout?: () => void
 }
 
 export function Sidebar({
@@ -25,13 +30,32 @@ export function Sidebar({
   riotId,
   tagline,
   isConnecting,
+  username,
   onAuthModeChange,
   onEmailChange,
   onPasswordChange,
   onRiotIdChange,
   onTaglineChange,
   onConnect,
+  onAuthSuccess,
+  onLogout,
 }: SidebarProps) {
+  const isLoggedIn = !!username
+  const [isLoggingOut, setIsLoggingOut] = useState(false)
+
+  const handleLogout = async () => {
+    setIsLoggingOut(true)
+    try {
+      await authService.logOut()
+    } catch (error) {
+      console.error('Logout error:', error)
+    } finally {
+      authService.clearTokens()
+      onLogout?.()
+      setIsLoggingOut(false)
+    }
+  }
+
   return (
     <aside className="relative overflow-hidden rounded-[28px] border border-white/10 bg-slate-950/75 p-5 shadow-[0_0_0_1px_rgba(255,255,255,0.03),0_30px_80px_rgba(3,7,18,0.7)] backdrop-blur-xl lg:sticky lg:top-6 lg:h-[calc(100vh-3rem)]">
       <div className="absolute inset-x-0 top-0 h-40 bg-[radial-gradient(circle_at_top,_rgba(34,211,238,0.24),_transparent_65%)]" />
@@ -54,42 +78,59 @@ export function Sidebar({
           </div>
         </div>
 
-        <RiotConnectPanel
-          riotId={riotId}
-          tagline={tagline}
-          isConnecting={isConnecting}
-          onRiotIdChange={onRiotIdChange}
-          onTaglineChange={onTaglineChange}
-          onConnect={onConnect}
-        />
+        {!isLoggedIn ? (
+          <>
+            <AuthPanel
+              authMode={authMode}
+              email={email}
+              password={password}
+              onAuthModeChange={onAuthModeChange}
+              onEmailChange={onEmailChange}
+              onPasswordChange={onPasswordChange}
+              onAuthSuccess={onAuthSuccess}
+            />
+          </>
+        ) : (
+          <>
+            <RiotConnectPanel
+              riotId={riotId}
+              tagline={tagline}
+              isConnecting={isConnecting}
+              onRiotIdChange={onRiotIdChange}
+              onTaglineChange={onTaglineChange}
+              onConnect={onConnect}
+            />
 
-        <AuthPanel
-          authMode={authMode}
-          email={email}
-          password={password}
-          onAuthModeChange={onAuthModeChange}
-          onEmailChange={onEmailChange}
-          onPasswordChange={onPasswordChange}
-        />
+            <div className="mt-auto rounded-3xl border border-white/10 bg-white/[0.04] p-4">
+              <div className="flex items-center gap-3 justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-cyan-400 to-fuchsia-500 text-sm font-semibold text-slate-950">
+                    {username?.slice(0, 2).toUpperCase()}
+                  </div>
+                  <div>
+                    <p className="text-sm font-semibold text-white">{username}</p>
+                  </div>
+                </div>
+                <button
+                  onClick={handleLogout}
+                  disabled={isLoggingOut}
+                  className="rounded-lg p-2 text-slate-400 hover:text-red-400 hover:bg-red-500/10 transition disabled:opacity-50"
+                  title="Logout"
+                >
+                  <LogOut className="h-4 w-4" />
+                </button>
+              </div>
 
-        <div className="mt-auto rounded-3xl border border-white/10 bg-white/[0.04] p-4">
-          <div className="flex items-center gap-3">
-            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-cyan-400 to-fuchsia-500 text-sm font-semibold text-slate-950">
-              JN
+              <div className="mt-4 flex items-center justify-between rounded-2xl border border-emerald-400/15 bg-emerald-400/10 px-3 py-2 text-xs text-emerald-200">
+                <span className="flex items-center gap-2">
+                  <ShieldCheck className="h-4 w-4" />
+                  Smart sync active
+                </span>
+                <span>98%</span>
+              </div>
             </div>
-            <div>
-              <p className="text-sm font-semibold text-white">Jasna Nova</p>
-            </div>
-          </div>
-
-          <div className="mt-4 flex items-center justify-between rounded-2xl border border-emerald-400/15 bg-emerald-400/10 px-3 py-2 text-xs text-emerald-200">
-            <span className="flex items-center gap-2">
-              <ShieldCheck className="h-4 w-4" />
-              Smart sync active
-            </span>
-            <span>98%</span>
-          </div>
-        </div>
+          </>
+        )}
       </div>
     </aside>
   )
