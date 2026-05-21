@@ -38,19 +38,8 @@ const response = await authService.logIn({
   password: 'password123'
 });
 
-// Store tokens after login
-if (response.data) {
-  authService.setTokens(response.data.token, response.data.refreshToken);
-}
-
 // Logout
 await authService.logOut();
-authService.clearTokens();
-
-// Check authentication status
-if (authService.isAuthenticated()) {
-  // User is logged in
-}
 ```
 
 ### User Service (`userService`)
@@ -100,7 +89,7 @@ const syncResult = await syncService.syncData();
 
 The axios instance includes automatic error handling:
 
-- **401 Unauthorized**: Clears tokens and redirects to login
+- **401 Unauthorized**: Propagates the error to the UI
 - **Timeouts**: Requests timeout after 10 seconds
 - **Network errors**: Logged to console in development
 
@@ -112,7 +101,6 @@ try {
     email: 'user@example.com',
     password: 'password'
   });
-  authService.setTokens(response.data.token, response.data.refreshToken);
 } catch (error) {
   console.error('Login failed:', error);
   // Handle error appropriately
@@ -121,12 +109,11 @@ try {
 
 ## Authentication Flow
 
-Tokens are automatically attached to all requests via interceptors:
+Authentication uses httpOnly cookies:
 
-1. Token stored in localStorage after login
-2. Token automatically added to `Authorization` header
-3. If 401 response received, user is logged out automatically
-4. Token must be manually set after successful login
+1. Login/register sets a secure httpOnly cookie from the API
+2. Requests include cookies automatically via `withCredentials`
+3. If 401 response received, the UI can prompt for login
 
 ## Development
 

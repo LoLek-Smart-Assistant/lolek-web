@@ -14,7 +14,9 @@ export function DashboardScreen() {
   const [password, setPassword] = useState('hunter2')
   const [riotId, setRiotId] = useState('NeonFox')
   const [tagline, setTagline] = useState('EUW')
+  const [platform, setPlatform] = useState('EUW1')
   const [isConnecting, setIsConnecting] = useState(false)
+  const [isRiotConnected, setIsRiotConnected] = useState(false)
   const [messages, setMessages] = useState(initialChat)
   const [pendingMessage, setPendingMessage] = useState('')
   const [isTyping, setIsTyping] = useState(false)
@@ -29,6 +31,14 @@ export function DashboardScreen() {
         const user = await authService.initializeAuth()
         if (user) {
           setUsername(user.username)
+          if (user.riotName && user.riotTag) {
+            setRiotId(user.riotName)
+            setTagline(user.riotTag)
+            if (user.platform) {
+              setPlatform(user.platform)
+            }
+            setIsRiotConnected(true)
+          }
         }
       } finally {
         setIsInitializing(false)
@@ -55,6 +65,7 @@ export function DashboardScreen() {
 
     timeoutRef.current = window.setTimeout(() => {
       setIsConnecting(false)
+      setIsRiotConnected(true)
     }, 1400)
   }
 
@@ -70,6 +81,28 @@ export function DashboardScreen() {
     setEmail('')
     setPassword('')
     setAuthMode('login')
+    setIsRiotConnected(false)
+  }
+
+  const handleRiotIdChange = (value: string) => {
+    setRiotId(value)
+    if (isRiotConnected) {
+      setIsRiotConnected(false)
+    }
+  }
+
+  const handleTaglineChange = (value: string) => {
+    setTagline(value)
+    if (isRiotConnected) {
+      setIsRiotConnected(false)
+    }
+  }
+
+  const handlePlatformChange = (value: string) => {
+    setPlatform(value)
+    if (isRiotConnected) {
+      setIsRiotConnected(false)
+    }
   }
 
   const handleSendMessage = () => {
@@ -135,13 +168,16 @@ export function DashboardScreen() {
           password={password}
           riotId={riotId}
           tagline={tagline}
+          platform={platform}
           isConnecting={isConnecting}
+          isRiotConnected={isRiotConnected}
           username={username}
           onAuthModeChange={setAuthMode}
           onEmailChange={setEmail}
           onPasswordChange={setPassword}
-          onRiotIdChange={setRiotId}
-          onTaglineChange={setTagline}
+          onRiotIdChange={handleRiotIdChange}
+          onTaglineChange={handleTaglineChange}
+          onPlatformChange={handlePlatformChange}
           onConnect={handleConnect}
           onAuthSuccess={handleAuthSuccess}
           onLogout={handleLogout}

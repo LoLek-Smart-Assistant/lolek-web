@@ -13,10 +13,8 @@ export interface LoginRequest {
 }
 
 export interface AuthResponse {
-  token: string;
-  refreshToken: string;
   user: {
-    _id: string;
+    id: string;
     username: string;
     email: string;
     riotName?: string;
@@ -46,36 +44,6 @@ const authService = {
    */
   logOut: () => {
     return axiosInstance.post('/authentication/log-out');
-  },
-
-  /**
-   * Store tokens in localStorage
-   */
-  setTokens: (token: string, refreshToken: string) => {
-    localStorage.setItem('token', token);
-    localStorage.setItem('refreshToken', refreshToken);
-  },
-
-  /**
-   * Get stored token
-   */
-  getToken: () => {
-    return localStorage.getItem('token');
-  },
-
-  /**
-   * Clear stored tokens
-   */
-  clearTokens: () => {
-    localStorage.removeItem('token');
-    localStorage.removeItem('refreshToken');
-  },
-
-  /**
-   * Check if user is authenticated
-   */
-  isAuthenticated: () => {
-    return !!localStorage.getItem('token');
   },
 
   /**

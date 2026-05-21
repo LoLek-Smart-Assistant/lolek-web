@@ -1,4 +1,4 @@
-import { ShieldCheck, LogOut } from 'lucide-react'
+import { LoaderCircle, ShieldAlert, ShieldCheck, LogOut } from 'lucide-react'
 import { useState } from 'react'
 import { authService } from '../services'
 import { AuthPanel } from './AuthPanel'
@@ -11,13 +11,16 @@ type SidebarProps = {
   password: string
   riotId: string
   tagline: string
+  platform: string
   isConnecting: boolean
+  isRiotConnected: boolean
   username?: string | null
   onAuthModeChange: (mode: 'login' | 'register') => void
   onEmailChange: (value: string) => void
   onPasswordChange: (value: string) => void
   onRiotIdChange: (value: string) => void
   onTaglineChange: (value: string) => void
+  onPlatformChange: (value: string) => void
   onConnect: () => void
   onAuthSuccess?: (userData: { username: string; email: string }) => void
   onLogout?: () => void
@@ -29,19 +32,45 @@ export function Sidebar({
   password,
   riotId,
   tagline,
+  platform,
   isConnecting,
+  isRiotConnected,
   username,
   onAuthModeChange,
   onEmailChange,
   onPasswordChange,
   onRiotIdChange,
   onTaglineChange,
+  onPlatformChange,
   onConnect,
   onAuthSuccess,
   onLogout,
 }: SidebarProps) {
   const isLoggedIn = !!username
   const [isLoggingOut, setIsLoggingOut] = useState(false)
+  const riotStatus = isConnecting
+    ? {
+        label: 'Linking Riot ID',
+        value: 'Working',
+        className: 'border-cyan-400/20 bg-cyan-400/10 text-cyan-200',
+        icon: LoaderCircle,
+        iconClassName: 'animate-spin',
+      }
+    : isRiotConnected
+      ? {
+          label: 'Riot connected',
+          value: 'Linked',
+          className: 'border-emerald-400/15 bg-emerald-400/10 text-emerald-200',
+          icon: ShieldCheck,
+          iconClassName: '',
+        }
+      : {
+          label: 'Riot not connected',
+          value: 'Not linked',
+          className: 'border-amber-400/20 bg-amber-400/10 text-amber-200',
+          icon: ShieldAlert,
+          iconClassName: '',
+        }
 
   const handleLogout = async () => {
     setIsLoggingOut(true)
@@ -50,7 +79,6 @@ export function Sidebar({
     } catch (error) {
       console.error('Logout error:', error)
     } finally {
-      authService.clearTokens()
       onLogout?.()
       setIsLoggingOut(false)
     }
@@ -92,15 +120,6 @@ export function Sidebar({
           </>
         ) : (
           <>
-            <RiotConnectPanel
-              riotId={riotId}
-              tagline={tagline}
-              isConnecting={isConnecting}
-              onRiotIdChange={onRiotIdChange}
-              onTaglineChange={onTaglineChange}
-              onConnect={onConnect}
-            />
-
             <div className="mt-auto rounded-3xl border border-white/10 bg-white/[0.04] p-4">
               <div className="flex items-center gap-3 justify-between">
                 <div className="flex items-center gap-3">
@@ -121,12 +140,27 @@ export function Sidebar({
                 </button>
               </div>
 
-              <div className="mt-4 flex items-center justify-between rounded-2xl border border-emerald-400/15 bg-emerald-400/10 px-3 py-2 text-xs text-emerald-200">
+              <div
+                className={`mt-4 flex items-center justify-between rounded-2xl border px-3 py-2 text-xs ${riotStatus.className}`}
+              >
                 <span className="flex items-center gap-2">
-                  <ShieldCheck className="h-4 w-4" />
-                  Smart sync active
+                  <riotStatus.icon className={`h-4 w-4 ${riotStatus.iconClassName}`} />
+                  {riotStatus.label}
                 </span>
-                <span>98%</span>
+                <span>{riotStatus.value}</span>
+              </div>
+              <div className="mt-4">
+                <RiotConnectPanel
+                  riotId={riotId}
+                  tagline={tagline}
+                  platform={platform}
+                  isConnecting={isConnecting}
+                  variant="embedded"
+                  onRiotIdChange={onRiotIdChange}
+                  onTaglineChange={onTaglineChange}
+                  onPlatformChange={onPlatformChange}
+                  onConnect={onConnect}
+                />
               </div>
             </div>
           </>

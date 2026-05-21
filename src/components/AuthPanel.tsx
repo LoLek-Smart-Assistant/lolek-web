@@ -43,7 +43,6 @@ export function AuthPanel({
           password,
         })
 
-        authService.setTokens(response.data.token, response.data.refreshToken)
         onAuthSuccess?.({
           username: response.data.user.username,
           email: response.data.user.email,
@@ -54,7 +53,6 @@ export function AuthPanel({
           password,
         })
 
-        authService.setTokens(response.data.token, response.data.refreshToken)
         onAuthSuccess?.({
           username: response.data.user.username,
           email: response.data.user.email,
@@ -106,20 +104,22 @@ export function AuthPanel({
       </div>
 
       <div className="space-y-3">
-        <label className="block">
-          <span className="mb-1.5 flex items-center gap-2 text-xs font-medium text-slate-400">
-            <User className="h-3.5 w-3.5" />
-            Username
-          </span>
-          <input
-            type="text"
-            value={username}
-            onChange={(event) => setUsername(event.target.value)}
-            placeholder={authMode === 'register' ? 'Choose your username' : 'Your username'}
-            className="w-full rounded-2xl border border-white/10 bg-slate-900/80 px-4 py-3 text-sm text-white outline-none transition placeholder:text-slate-500 focus:border-cyan-400/40 focus:ring-2 focus:ring-cyan-400/20 disabled:opacity-50"
-            disabled={isLoading}
-          />
-        </label>
+        {authMode === 'register' && (
+          <label className="block">
+            <span className="mb-1.5 flex items-center gap-2 text-xs font-medium text-slate-400">
+              <User className="h-3.5 w-3.5" />
+              Username
+            </span>
+            <input
+              type="text"
+              value={username}
+              onChange={(event) => setUsername(event.target.value)}
+              placeholder="Choose your username"
+              className="w-full rounded-2xl border border-white/10 bg-slate-900/80 px-4 py-3 text-sm text-white outline-none transition placeholder:text-slate-500 focus:border-cyan-400/40 focus:ring-2 focus:ring-cyan-400/20 disabled:opacity-50"
+              disabled={isLoading}
+            />
+          </label>
+        )}
 
         <label className="block">
           <span className="mb-1.5 flex items-center gap-2 text-xs font-medium text-slate-400">
