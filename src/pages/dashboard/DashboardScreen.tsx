@@ -39,6 +39,7 @@ export function DashboardScreen() {
   const [liveGameSummary, setLiveGameSummary] = useState<LiveGameSummary | null>(
     null,
   )
+  const [liveGameMessage, setLiveGameMessage] = useState<string | null>(null)
   const timeoutRef = useRef<number | null>(null)
 
   // Initialize authentication on app load
@@ -87,15 +88,27 @@ export function DashboardScreen() {
       {
         onMessage: (message) => {
           console.log('Live game websocket message:', message)
+
+          if (
+            message.type === 'live-game-summary' &&
+            message.status === 'waiting'
+          ) {
+            setLiveGameSummary(null)
+            setLiveGameMessage(message.message || 'No active game found yet.')
+            return
+          }
+
           const liveData = getLiveGameDataFromMessage(message)
 
           if (liveData) {
             console.log('Live game websocket summary data:', liveData)
+            setLiveGameMessage(null)
             setLiveGameSummary(liveData)
           }
 
           if (message.type === 'not-in-game' || message.type === 'error') {
             setLiveGameSummary(null)
+            setLiveGameMessage(message.message)
           }
         },
         onError: (event) => {
@@ -151,6 +164,7 @@ export function DashboardScreen() {
     setAuthMode('login')
     setIsRiotConnected(false)
     setLiveGameSummary(null)
+    setLiveGameMessage(null)
   }
 
   const handleRiotIdChange = (value: string) => {
@@ -158,6 +172,7 @@ export function DashboardScreen() {
     if (isRiotConnected) {
       setIsRiotConnected(false)
       setLiveGameSummary(null)
+      setLiveGameMessage(null)
     }
   }
 
@@ -166,6 +181,7 @@ export function DashboardScreen() {
     if (isRiotConnected) {
       setIsRiotConnected(false)
       setLiveGameSummary(null)
+      setLiveGameMessage(null)
     }
   }
 
@@ -174,6 +190,7 @@ export function DashboardScreen() {
     if (isRiotConnected) {
       setIsRiotConnected(false)
       setLiveGameSummary(null)
+      setLiveGameMessage(null)
     }
   }
 
@@ -224,11 +241,15 @@ export function DashboardScreen() {
     }, 1100)
   }
 
+  const noLiveGameMessage =
+    liveGameMessage ||
+    (isRiotConnected && !liveGameSummary ? 'Waiting for live game data.' : null)
+  const shouldUseMockData = !isRiotConnected
   const activeRecommendation = getRecommendationFromLiveSummary(
     liveGameSummary,
     recommendation,
   )
-  const visibleTeams = getTeamsFromLiveSummary(liveGameSummary)
+  const visibleTeams = getTeamsFromLiveSummary(liveGameSummary, shouldUseMockData)
 
   return (
     <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(8,145,178,0.16),_transparent_28%),radial-gradient(circle_at_top_right,_rgba(168,85,247,0.14),_transparent_26%),linear-gradient(180deg,_#020617_0%,_#0f172a_45%,_#020617_100%)] px-4 py-4 text-white sm:px-6 lg:px-6">
@@ -258,23 +279,39 @@ export function DashboardScreen() {
           <div className="grid gap-6 xl:grid-cols-2">
             <div className="space-y-6">
               <MatchStatusCard
-                mode={liveGameSummary?.game?.gameMode ?? liveMatch.mode}
-                duration={formatGameDuration(
-                  liveGameSummary?.gameDuration ??
-                    liveGameSummary?.game?.gameLengthSeconds,
-                )}
+                mode={
+                  noLiveGameMessage
+                    ? 'No active game'
+                    : liveGameSummary?.game?.gameMode ?? liveMatch.mode
+                }
+                duration={
+                  noLiveGameMessage
+                    ? '--:--'
+                    : formatGameDuration(
+                        liveGameSummary?.gameDuration ??
+                          liveGameSummary?.game?.gameLengthSeconds,
+                      )
+                }
                 region={
                   liveGameSummary?.platform ??
                   liveGameSummary?.game?.platformId ??
-                  liveMatch.region
+                  platform
                 }
               />
-              {visibleTeams[0] && <TeamPanel team={visibleTeams[0]} />}
+              {noLiveGameMessage ? (
+                <NoLiveGamePanel message={noLiveGameMessage} />
+              ) : (
+                visibleTeams[0] && <TeamPanel team={visibleTeams[0]} />
+              )}
             </div>
-            {visibleTeams[1] && <TeamPanel team={visibleTeams[1]} />}
+            {!noLiveGameMessage && visibleTeams[1] && (
+              <TeamPanel team={visibleTeams[1]} />
+            )}
           </div>
 
-          <RecommendedBuild recommendation={activeRecommendation} />
+          {!noLiveGameMessage && (
+            <RecommendedBuild recommendation={activeRecommendation} />
+          )}
         </main>
 
         <aside className="relative overflow-hidden rounded-[28px] border border-white/10 bg-slate-950/75 p-5 shadow-[0_0_0_1px_rgba(255,255,255,0.03),0_30px_80px_rgba(3,7,18,0.7)] backdrop-blur-xl xl:sticky xl:top-6 xl:h-[calc(100vh-3rem)]">
@@ -308,7 +345,24 @@ function formatGameDuration(gameLengthSeconds?: number) {
   return `${minutes}:${seconds.toString().padStart(2, '0')}`
 }
 
-function getTeamsFromLiveSummary(summary: LiveGameSummary | null): Team[] {
+function NoLiveGamePanel({ message }: { message: string }) {
+  return (
+    <section className="rounded-[28px] border border-white/10 bg-slate-950/75 px-4 py-6 text-center">
+      <p className="text-[10px] uppercase tracking-[0.22em] text-slate-500">
+        Live game
+      </p>
+      <h3 className="mt-2 text-lg font-semibold text-white">
+        No current game yet
+      </h3>
+      <p className="mt-2 text-sm text-slate-400">{message}</p>
+    </section>
+  )
+}
+
+function getTeamsFromLiveSummary(
+  summary: LiveGameSummary | null,
+  useMockFallback: boolean,
+): Team[] {
   if (summary?.myTeam?.length || summary?.enemyTeam?.length) {
     const participants = [...(summary.myTeam ?? []), ...(summary.enemyTeam ?? [])]
     const blueParticipants = participants.filter(
@@ -352,7 +406,7 @@ function getTeamsFromLiveSummary(summary: LiveGameSummary | null): Team[] {
   const participants = getLiveParticipants(summary)
 
   if (!participants.length) {
-    return teams
+    return useMockFallback ? teams : []
   }
 
   let blueParticipants = participants.filter(

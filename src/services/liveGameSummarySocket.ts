@@ -15,8 +15,9 @@ export type LiveGameSummaryMessage =
     }
   | {
       type: 'live-game-summary'
-      status: 'live' | string
-      data: LiveGameSummary
+      status: 'live' | 'waiting' | string
+      message?: string
+      data?: LiveGameSummary
     }
   | {
       type: 'not-in-game'
