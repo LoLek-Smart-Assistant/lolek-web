@@ -19,7 +19,7 @@ export function PlayerCard({ player }: PlayerCardProps) {
           </div>
 
           <div className="min-w-0">
-            <p className="truncate text-xs font-semibold text-white">
+            <p className="break-words text-xs font-semibold leading-4 text-white">
               {player.summonerName}
             </p>
             <p className="truncate text-[11px] text-slate-400">{player.champion}</p>

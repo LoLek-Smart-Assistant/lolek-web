@@ -1,7 +1,10 @@
 import axios from 'axios';
 import type { AxiosInstance, AxiosError } from 'axios';
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+const viteEnv = (import.meta as unknown as {
+  env?: { VITE_API_URL?: string; DEV?: boolean }
+}).env;
+const API_BASE_URL = viteEnv?.VITE_API_URL || 'http://localhost:3000';
 
 const axiosInstance: AxiosInstance = axios.create({
   baseURL: API_BASE_URL,
@@ -17,7 +20,7 @@ axiosInstance.interceptors.response.use(
   (response) => response,
   (error: AxiosError) => {
     // Log errors in development
-    if (import.meta.env.DEV) {
+    if (viteEnv?.DEV) {
       console.error('API Error:', {
         status: error.response?.status,
         data: error.response?.data,

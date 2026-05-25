@@ -9,3 +9,11 @@ export type { AccountInfo, LiveGameParticipant, LiveGameData } from './summonerS
 
 export { default as syncService } from './syncService';
 export type { Champion, Item, SyncResponse } from './syncService';
+
+export { connectLiveGameSummary } from './liveGameSummarySocket';
+export type {
+  LiveGameSummary,
+  LiveGameSummaryMessage,
+  LiveGameSummaryParams,
+  LiveGameParticipant as LiveGameSummaryParticipant,
+} from './liveGameSummarySocket';
