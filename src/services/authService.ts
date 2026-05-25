@@ -1,5 +1,4 @@
 import axiosInstance from '../config/axiosConfig';
-import userService from './userService';
 
 export interface SignInRequest {
   username: string;
@@ -22,15 +21,6 @@ export interface AuthResponse {
     puuid?: string;
     platform?: string;
   };
-}
-
-const hasAuthCookie = () => {
-  if (typeof document === 'undefined') {
-    return false
-  }
-
-  const cookieValue = document.cookie || ''
-  return cookieValue.includes('lolek-token=') || cookieValue.includes('lolek-refresh-token=')
 }
 
 const authService = {
@@ -56,17 +46,20 @@ const authService = {
   },
 
   /**
+   * Refresh access token using refresh cookie
+   */
+  refresh: () => {
+    return axiosInstance.post<AuthResponse>('/authentication/refresh');
+  },
+
+  /**
    * Initialize authentication by checking if user is already logged in (via cookies)
    * Returns user data if authenticated, null if not
    */
   initializeAuth: async () => {
-    if (!hasAuthCookie()) {
-      return null
-    }
-
     try {
-      const response = await userService.getProfile();
-      return response.data;
+      const response = await authService.refresh();
+      return response.data.user;
     } catch (error: any) {
       // 401 is expected when user is not logged in - return null silently
       if (error.response?.status === 401) {

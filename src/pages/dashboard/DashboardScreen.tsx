@@ -7,6 +7,7 @@ import { Sidebar } from '../../components/Sidebar'
 import { TeamPanel } from '../../components/TeamPanel'
 import { initialChat, liveMatch, recommendation, teams } from '../../data/mockRiot'
 import authService from '../../services/authService'
+import userService from '../../services/userService'
 
 export function DashboardScreen() {
   const [authMode, setAuthMode] = useState<'login' | 'register'>('login')
@@ -56,17 +57,32 @@ export function DashboardScreen() {
     }
   }, [])
 
-  const handleConnect = () => {
-    setIsConnecting(true)
-
-    if (timeoutRef.current) {
-      window.clearTimeout(timeoutRef.current)
+  const handleConnect = async () => {
+    if (!riotId || !tagline || !platform) {
+      return
     }
 
-    timeoutRef.current = window.setTimeout(() => {
-      setIsConnecting(false)
+    setIsConnecting(true)
+
+    try {
+      const response = await userService.linkRiotProfile({
+        riotName: riotId,
+        riotTag: tagline,
+        platform,
+      })
+      const linkedUser = response.data?.user
+
+      if (linkedUser?.username) {
+        setUsername(linkedUser.username)
+      }
+
       setIsRiotConnected(true)
-    }, 1400)
+    } catch (error) {
+      console.error('Riot link error:', error)
+      setIsRiotConnected(false)
+    } finally {
+      setIsConnecting(false)
+    }
   }
 
   const handleAuthSuccess = (userData: { username: string; email: string }) => {
