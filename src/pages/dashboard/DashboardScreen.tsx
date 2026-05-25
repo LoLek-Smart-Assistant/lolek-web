@@ -381,11 +381,11 @@ function getTeamsFromLiveSummary(
         side: 'blue',
         players: (blueParticipants.length ? blueParticipants : myTeamFallback).map(
           (participant, index) =>
-          mapParticipantToPlayer(
-            participant,
-            index,
-            'from-cyan-400 to-blue-500',
-          ),
+            mapParticipantToPlayer(
+              participant,
+              index,
+              'from-cyan-400 to-blue-500',
+            ),
         ),
       },
       {
@@ -393,11 +393,11 @@ function getTeamsFromLiveSummary(
         side: 'red',
         players: (redParticipants.length ? redParticipants : enemyTeamFallback).map(
           (participant, index) =>
-          mapParticipantToPlayer(
-            participant,
-            index,
-            'from-rose-500 to-red-500',
-          ),
+            mapParticipantToPlayer(
+              participant,
+              index,
+              'from-rose-500 to-red-500',
+            ),
         ),
       },
     ]
@@ -483,6 +483,9 @@ function mapParticipantToPlayer(
 
   return {
     champion,
+    championImage: getChampionImageUrl(
+      participant.championImage || getStringField(participant, 'image'),
+    ),
     summonerName,
     currentItems,
     predictedItems,
@@ -518,6 +521,12 @@ function getRecommendationFromLiveSummary(
             connectedFromTeams.championId ?? getChampionKey(connectedFromTeams),
           )
         : fallback.champion,
+      championImage: connectedFromTeams
+        ? getChampionImageUrl(
+            connectedFromTeams.championImage ||
+              getStringField(connectedFromTeams, 'image'),
+          )
+        : fallback.championImage,
       summonerName: playerSummonerName,
     }
   }
@@ -532,6 +541,10 @@ function getRecommendationFromLiveSummary(
       connectedParticipant.championName ||
       getStringField(connectedParticipant, 'champion') ||
       formatChampionId(connectedParticipant.championId),
+    championImage: getChampionImageUrl(
+      connectedParticipant.championImage ||
+        getStringField(connectedParticipant, 'image'),
+    ),
     summonerName:
       connectedParticipant.riotId ||
       connectedParticipant.summonerName ||
@@ -644,4 +657,25 @@ function formatKda(participant: LiveGameParticipant) {
   }
 
   return '- / - / -'
+}
+
+function getChampionImageUrl(championImage?: string) {
+  if (!championImage) {
+    return undefined
+  }
+
+  if (/^https?:\/\//i.test(championImage)) {
+    return championImage
+  }
+
+  if (championImage.startsWith('/')) {
+    const viteEnv = (import.meta as unknown as {
+      env?: { VITE_API_URL?: string }
+    }).env
+    const apiUrl = viteEnv?.VITE_API_URL || 'http://localhost:3000'
+
+    return new URL(championImage, apiUrl).toString()
+  }
+
+  return championImage
 }

@@ -53,6 +53,7 @@ export type LiveGameParticipant = {
   summonerName?: string
   riotId?: string
   championName?: string
+  championImage?: string
   championKey?: string
   championId?: number
   teamId?: number | string

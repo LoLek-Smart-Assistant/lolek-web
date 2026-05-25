@@ -12,11 +12,19 @@ export function PlayerCard({ player }: PlayerCardProps) {
     <article className="overflow-hidden rounded-[20px] border border-white/8 bg-slate-950/75 px-3 py-2.5 transition hover:border-cyan-400/20 hover:bg-slate-950/90">
       <div className="grid min-w-0 gap-3 lg:grid-cols-[140px_minmax(0,1fr)] lg:items-center">
         <div className="flex min-w-0 items-center gap-3">
-          <div
-            className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-gradient-to-br ${player.accent} text-[10px] font-semibold text-slate-950 shadow-[0_0_20px_rgba(56,189,248,0.22)] ring-2 ring-white/10`}
-          >
-            {championInitials}
-          </div>
+          {player.championImage ? (
+            <img
+              src={player.championImage}
+              alt={player.champion}
+              className="h-11 w-11 shrink-0 rounded-full object-cover shadow-[0_0_20px_rgba(56,189,248,0.22)] ring-2 ring-white/10"
+            />
+          ) : (
+            <div
+              className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-gradient-to-br ${player.accent} text-[10px] font-semibold text-slate-950 shadow-[0_0_20px_rgba(56,189,248,0.22)] ring-2 ring-white/10`}
+            >
+              {championInitials}
+            </div>
+          )}
 
           <div className="min-w-0">
             <p className="break-words text-xs font-semibold leading-4 text-white">
