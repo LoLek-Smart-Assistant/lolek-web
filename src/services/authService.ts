@@ -24,6 +24,15 @@ export interface AuthResponse {
   };
 }
 
+const hasAuthCookie = () => {
+  if (typeof document === 'undefined') {
+    return false
+  }
+
+  const cookieValue = document.cookie || ''
+  return cookieValue.includes('lolek-token=') || cookieValue.includes('lolek-refresh-token=')
+}
+
 const authService = {
   /**
    * Create a new user account
@@ -51,6 +60,10 @@ const authService = {
    * Returns user data if authenticated, null if not
    */
   initializeAuth: async () => {
+    if (!hasAuthCookie()) {
+      return null
+    }
+
     try {
       const response = await userService.getProfile();
       return response.data;
