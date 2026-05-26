@@ -2,6 +2,7 @@ import { motion } from 'framer-motion'
 import { BrainCircuit, ChevronRight } from 'lucide-react'
 
 import type { Recommendation } from '../data/mockRiot'
+import itemService from '../services/itemService'
 
 type RecommendedBuildProps = {
   recommendation: Recommendation
@@ -72,7 +73,7 @@ export function RecommendedBuild({
             <div className="rounded-[24px] border border-white/10 bg-black/20 p-4">
               <p className="flex items-center gap-2 text-[11px] uppercase tracking-[0.18em] text-slate-500">
                 <BrainCircuit className="h-4 w-4 text-cyan-300" />
-                AI reasoning
+                Smart reasoning
               </p>
               <div className="mt-3 space-y-2">
                 {recommendation.reasoning.slice(0, 2).map((item) => (
@@ -142,6 +143,8 @@ function RecommendedItemTile({
     .slice(0, 2)
     .toUpperCase()
 
+  const image = itemService.getItemByName?.(item)?.image ?? undefined
+
   return (
     <div className="w-16 shrink-0 text-center">
       <div
@@ -151,7 +154,11 @@ function RecommendedItemTile({
             : 'border-white/10 bg-[radial-gradient(circle_at_top,_rgba(34,211,238,0.16),_rgba(15,23,42,0.92))] text-slate-100'
         }`}
       >
-        {itemCode}
+        {image ? (
+          <img src={image} alt={item} className="h-12 w-12 rounded" />
+        ) : (
+          itemCode
+        )}
       </div>
       <p className="mt-1 truncate text-[9px] leading-3 text-slate-400">{item}</p>
     </div>
