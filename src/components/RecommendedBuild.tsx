@@ -28,9 +28,17 @@ export function RecommendedBuild({
             <div className="rounded-[26px] border border-amber-400/20 bg-black/20 p-4 shadow-[0_0_35px_rgba(251,191,36,0.08)]">
               <div className="mt-3 flex min-w-0 flex-col gap-3 xl:flex-row xl:items-center">
                 <div className="flex min-w-0 items-center gap-3 xl:w-56">
-                  <div className="flex h-18 w-18 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-amber-300 via-orange-400 to-orange-500 text-xl font-semibold text-slate-950 ring-2 ring-amber-200/20">
-                    {recommendation.champion.slice(0, 2).toUpperCase()}
-                  </div>
+                  {recommendation.championImage ? (
+                    <img
+                      src={recommendation.championImage}
+                      alt={recommendation.champion}
+                      className="h-18 w-18 shrink-0 rounded-full object-cover ring-2 ring-amber-200/20"
+                    />
+                  ) : (
+                    <div className="flex h-18 w-18 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-amber-300 via-orange-400 to-orange-500 text-xl font-semibold text-slate-950 ring-2 ring-amber-200/20">
+                      {recommendation.champion.slice(0, 2).toUpperCase()}
+                    </div>
+                  )}
                   <div className="min-w-0">
                     <p className="truncate text-lg font-semibold text-white">
                       {recommendation.summonerName}
