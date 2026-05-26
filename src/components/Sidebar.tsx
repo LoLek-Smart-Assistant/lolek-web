@@ -6,6 +6,7 @@ import { RiotConnectPanel } from './RiotConnectPanel'
 import { LolekIcon } from './LolekIcon'
 
 type SidebarProps = {
+  activeTab: 'dashboard' | 'history'
   authMode: 'login' | 'register'
   email: string
   password: string
@@ -14,19 +15,23 @@ type SidebarProps = {
   platform: string
   isConnecting: boolean
   isRiotConnected: boolean
+  isEditingRiotProfile: boolean
   username?: string | null
   onAuthModeChange: (mode: 'login' | 'register') => void
+  onTabChange: (tab: 'dashboard' | 'history') => void
   onEmailChange: (value: string) => void
   onPasswordChange: (value: string) => void
   onRiotIdChange: (value: string) => void
   onTaglineChange: (value: string) => void
   onPlatformChange: (value: string) => void
+  onEditRiotProfile: () => void
   onConnect: () => void
   onAuthSuccess?: (userData: { username: string; email: string }) => void
   onLogout?: () => void
 }
 
 export function Sidebar({
+  activeTab,
   authMode,
   email,
   password,
@@ -35,13 +40,16 @@ export function Sidebar({
   platform,
   isConnecting,
   isRiotConnected,
+  isEditingRiotProfile,
   username,
   onAuthModeChange,
+  onTabChange,
   onEmailChange,
   onPasswordChange,
   onRiotIdChange,
   onTaglineChange,
   onPlatformChange,
+  onEditRiotProfile,
   onConnect,
   onAuthSuccess,
   onLogout,
@@ -106,6 +114,33 @@ export function Sidebar({
           </div>
         </div>
 
+        {isLoggedIn ? (
+          <div className="grid gap-2 rounded-2xl bg-white/[0.03] p-2">
+            <button
+              type="button"
+              onClick={() => onTabChange('dashboard')}
+              className={`rounded-xl px-3 py-2 text-xs font-semibold uppercase tracking-[0.18em] transition ${
+                activeTab === 'dashboard'
+                  ? 'bg-white/10 text-white'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              Dashboard
+            </button>
+            <button
+              type="button"
+              onClick={() => onTabChange('history')}
+              className={`rounded-xl px-3 py-2 text-xs font-semibold uppercase tracking-[0.18em] transition ${
+                activeTab === 'history'
+                  ? 'bg-white/10 text-white'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              History
+            </button>
+          </div>
+        ) : null}
+
         {!isLoggedIn ? (
           <>
             <AuthPanel
@@ -120,48 +155,61 @@ export function Sidebar({
           </>
         ) : (
           <>
-            <div className="mt-auto rounded-3xl border border-white/10 bg-white/[0.04] p-4">
+            <div className="mt-auto rounded-3xl bg-[linear-gradient(180deg,rgba(15,23,42,0.9),rgba(2,6,23,0.85))] p-4 shadow-[0_25px_80px_rgba(2,6,23,0.75)]">
               <div className="flex items-center gap-3 justify-between">
                 <div className="flex items-center gap-3">
-                  <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-cyan-400 to-fuchsia-500 text-sm font-semibold text-slate-950">
-                    {username?.slice(0, 2).toUpperCase()}
-                  </div>
                   <div>
                     <p className="text-sm font-semibold text-white">{username}</p>
+                    <p className="text-xs text-slate-400">Riot-ready profile</p>
                   </div>
                 </div>
                 <button
                   onClick={handleLogout}
                   disabled={isLoggingOut}
-                  className="rounded-lg p-2 text-slate-400 hover:text-red-400 hover:bg-red-500/10 transition disabled:opacity-50"
+                  className="rounded-full bg-white/[0.04] p-2 text-slate-400 transition hover:bg-red-500/10 hover:text-red-300 disabled:opacity-50"
                   title="Logout"
                 >
                   <LogOut className="h-4 w-4" />
                 </button>
               </div>
 
-              <div
-                className={`mt-4 flex items-center justify-between rounded-2xl border px-3 py-2 text-xs ${riotStatus.className}`}
-              >
-                <span className="flex items-center gap-2">
-                  <riotStatus.icon className={`h-4 w-4 ${riotStatus.iconClassName}`} />
-                  {riotStatus.label}
-                </span>
-                <span>{riotStatus.value}</span>
+              <div className="mt-4 flex items-center justify-between gap-3">
+                <div
+                  className={`flex flex-1 items-center justify-between rounded-2xl border px-3 py-2 text-xs ${riotStatus.className}`}
+                >
+                  <span className="flex items-center gap-2">
+                    <riotStatus.icon className={`h-4 w-4 ${riotStatus.iconClassName}`} />
+                    {riotStatus.label}
+                  </span>
+                  <span>{riotStatus.value}</span>
+                </div>
+                {isRiotConnected ? (
+                  <button
+                    type="button"
+                    onClick={onEditRiotProfile}
+                    className="rounded-full bg-white/[0.1] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-white/80 transition hover:bg-white/[0.18]"
+                  >
+                    {isEditingRiotProfile ? 'Close' : 'Edit'}
+                  </button>
+                ) : null}
               </div>
-              <div className="mt-4">
-                <RiotConnectPanel
-                  riotId={riotId}
-                  tagline={tagline}
-                  platform={platform}
-                  isConnecting={isConnecting}
-                  variant="embedded"
-                  onRiotIdChange={onRiotIdChange}
-                  onTaglineChange={onTaglineChange}
-                  onPlatformChange={onPlatformChange}
-                  onConnect={onConnect}
-                />
-              </div>
+              {!isRiotConnected || isEditingRiotProfile ? (
+                <div className="mt-4">
+                  <RiotConnectPanel
+                    riotId={riotId}
+                    tagline={tagline}
+                    platform={platform}
+                    isConnecting={isConnecting}
+                    isConnected={isRiotConnected}
+                    isEditing={isEditingRiotProfile}
+                    variant="embedded"
+                    onRiotIdChange={onRiotIdChange}
+                    onTaglineChange={onTaglineChange}
+                    onPlatformChange={onPlatformChange}
+                    onConnect={onConnect}
+                  />
+                </div>
+              ) : null}
             </div>
           </>
         )}

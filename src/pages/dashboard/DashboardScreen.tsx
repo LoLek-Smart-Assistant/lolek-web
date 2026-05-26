@@ -23,6 +23,9 @@ import {
 import userService from '../../services/userService'
 
 export function DashboardScreen() {
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'history'>(
+    'dashboard',
+  )
   const [authMode, setAuthMode] = useState<'login' | 'register'>('login')
   const [email, setEmail] = useState('jasna@smartassist.gg')
   const [password, setPassword] = useState('hunter2')
@@ -31,6 +34,7 @@ export function DashboardScreen() {
   const [platform, setPlatform] = useState('EUW1')
   const [isConnecting, setIsConnecting] = useState(false)
   const [isRiotConnected, setIsRiotConnected] = useState(false)
+  const [isEditingRiotProfile, setIsEditingRiotProfile] = useState(false)
   const [messages, setMessages] = useState(initialChat)
   const [pendingMessage, setPendingMessage] = useState('')
   const [isTyping, setIsTyping] = useState(false)
@@ -40,7 +44,71 @@ export function DashboardScreen() {
     null,
   )
   const [liveGameMessage, setLiveGameMessage] = useState<string | null>(null)
+  const [durationSeconds, setDurationSeconds] = useState<number | undefined>(
+    undefined,
+  )
   const timeoutRef = useRef<number | null>(null)
+  const mockHistory = [
+    {
+      id: 1,
+      result: 'Win',
+      queue: 'Ranked Solo',
+      duration: '29:41',
+      champion: 'Ahri',
+      kda: '11 / 2 / 9',
+      role: 'Mid',
+    },
+    {
+      id: 2,
+      result: 'Loss',
+      queue: 'Ranked Solo',
+      duration: '34:12',
+      champion: 'Orianna',
+      kda: '3 / 6 / 7',
+      role: 'Mid',
+    },
+    {
+      id: 3,
+      result: 'Win',
+      queue: 'Flex 5v5',
+      duration: '26:08',
+      champion: 'Jinx',
+      kda: '9 / 1 / 12',
+      role: 'ADC',
+    },
+    {
+      id: 4,
+      result: 'Win',
+      queue: 'Ranked Solo',
+      duration: '31:55',
+      champion: 'Leona',
+      kda: '2 / 4 / 18',
+      role: 'Support',
+    },
+  ] as const
+
+  const syncProfileFromApi = async () => {
+    try {
+      const profileResponse = await userService.getProfile()
+      const profile = profileResponse.data
+
+      if (profile?.riotName && profile?.riotTag) {
+        setRiotId(profile.riotName)
+        setTagline(profile.riotTag)
+        if (profile.platform) {
+          setPlatform(profile.platform)
+        }
+        setIsRiotConnected(true)
+        setIsEditingRiotProfile(false)
+        return
+      }
+
+      setIsEditingRiotProfile(true)
+      setIsRiotConnected(false)
+    } catch (error) {
+      console.error('Profile fetch error:', error)
+    }
+  }
 
   // Initialize authentication on app load
   useEffect(() => {
@@ -49,14 +117,7 @@ export function DashboardScreen() {
         const user = await authService.initializeAuth()
         if (user) {
           setUsername(user.username)
-          if (user.riotName && user.riotTag) {
-            setRiotId(user.riotName)
-            setTagline(user.riotTag)
-            if (user.platform) {
-              setPlatform(user.platform)
-            }
-            setIsRiotConnected(true)
-          }
+          await syncProfileFromApi()
         }
       } finally {
         setIsInitializing(false)
@@ -122,6 +183,29 @@ export function DashboardScreen() {
     }
   }, [isRiotConnected, platform, riotId, tagline])
 
+  useEffect(() => {
+    const baseDuration =
+      liveGameSummary?.gameDuration ??
+      liveGameSummary?.game?.gameLengthSeconds
+
+    if (typeof baseDuration !== 'number') {
+      setDurationSeconds(undefined)
+      return
+    }
+
+    setDurationSeconds(baseDuration)
+
+    const intervalId = window.setInterval(() => {
+      setDurationSeconds((current) =>
+        typeof current === 'number' ? current + 1 : baseDuration + 1,
+      )
+    }, 1000)
+
+    return () => {
+      window.clearInterval(intervalId)
+    }
+  }, [liveGameSummary?.gameDuration, liveGameSummary?.game?.gameLengthSeconds])
+
   const handleConnect = async () => {
     if (!riotId || !tagline || !platform) {
       return
@@ -142,6 +226,7 @@ export function DashboardScreen() {
       }
 
       setIsRiotConnected(true)
+      setIsEditingRiotProfile(false)
     } catch (error) {
       console.error('Riot link error:', error)
       setIsRiotConnected(false)
@@ -150,11 +235,16 @@ export function DashboardScreen() {
     }
   }
 
-  const handleAuthSuccess = (userData: { username: string; email: string }) => {
+  const handleAuthSuccess = async (userData: {
+    username: string
+    email: string
+  }) => {
     setUsername(userData.username)
     setEmail(userData.email)
     // Clear sensitive data after successful auth
     setPassword('')
+
+    await syncProfileFromApi()
   }
 
   const handleLogout = () => {
@@ -165,6 +255,7 @@ export function DashboardScreen() {
     setIsRiotConnected(false)
     setLiveGameSummary(null)
     setLiveGameMessage(null)
+    setIsEditingRiotProfile(false)
   }
 
   const handleRiotIdChange = (value: string) => {
@@ -192,6 +283,10 @@ export function DashboardScreen() {
       setLiveGameSummary(null)
       setLiveGameMessage(null)
     }
+  }
+
+  const handleEditRiotProfile = () => {
+    setIsEditingRiotProfile((current) => !current)
   }
 
   const handleSendMessage = () => {
@@ -244,6 +339,8 @@ export function DashboardScreen() {
   const noLiveGameMessage =
     liveGameMessage ||
     (isRiotConnected && !liveGameSummary ? 'Waiting for live game data.' : null)
+  const shouldShowMiddleSkeleton =
+    !isRiotConnected || isConnecting || isEditingRiotProfile
   const shouldUseMockData = !isRiotConnected
   const activeRecommendation = getRecommendationFromLiveSummary(
     liveGameSummary,
@@ -255,6 +352,7 @@ export function DashboardScreen() {
     <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(8,145,178,0.16),_transparent_28%),radial-gradient(circle_at_top_right,_rgba(168,85,247,0.14),_transparent_26%),linear-gradient(180deg,_#020617_0%,_#0f172a_45%,_#020617_100%)] px-4 py-4 text-white sm:px-6 lg:px-6">
       <div className="mx-auto grid max-w-[1840px] gap-6 xl:grid-cols-[300px_minmax(0,1fr)_440px]">
         <Sidebar
+          activeTab={activeTab}
           authMode={authMode}
           email={email}
           password={password}
@@ -263,54 +361,51 @@ export function DashboardScreen() {
           platform={platform}
           isConnecting={isConnecting}
           isRiotConnected={isRiotConnected}
+          isEditingRiotProfile={isEditingRiotProfile}
           username={username}
           onAuthModeChange={setAuthMode}
+          onTabChange={setActiveTab}
           onEmailChange={setEmail}
           onPasswordChange={setPassword}
           onRiotIdChange={handleRiotIdChange}
           onTaglineChange={handleTaglineChange}
           onPlatformChange={handlePlatformChange}
+          onEditRiotProfile={handleEditRiotProfile}
           onConnect={handleConnect}
           onAuthSuccess={handleAuthSuccess}
           onLogout={handleLogout}
         />
 
         <main className="space-y-6">
-          <div className="grid gap-6 xl:grid-cols-2">
-            <div className="space-y-6">
-              <MatchStatusCard
-                mode={
-                  noLiveGameMessage
-                    ? 'No active game'
-                    : liveGameSummary?.game?.gameMode ?? liveMatch.mode
-                }
-                duration={
-                  noLiveGameMessage
-                    ? '--:--'
-                    : formatGameDuration(
-                        liveGameSummary?.gameDuration ??
-                          liveGameSummary?.game?.gameLengthSeconds,
-                      )
-                }
-                region={
-                  liveGameSummary?.platform ??
-                  liveGameSummary?.game?.platformId ??
-                  platform
-                }
-              />
+          {activeTab === 'history' ? (
+            <MatchHistoryPanel entries={mockHistory} />
+          ) : shouldShowMiddleSkeleton ? (
+            <MiddleSkeleton />
+          ) : (
+            <>
               {noLiveGameMessage ? (
                 <NoLiveGamePanel message={noLiveGameMessage} />
               ) : (
-                visibleTeams[0] && <TeamPanel team={visibleTeams[0]} />
-              )}
-            </div>
-            {!noLiveGameMessage && visibleTeams[1] && (
-              <TeamPanel team={visibleTeams[1]} />
-            )}
-          </div>
+                <>
+                  <div className="grid gap-6 xl:grid-cols-2">
+                    <div className="space-y-6">
+                      <MatchStatusCard
+                        mode={liveGameSummary?.game?.gameMode ?? liveMatch.mode}
+                        duration={formatGameDuration(
+                          durationSeconds ??
+                            liveGameSummary?.gameDuration ??
+                            liveGameSummary?.game?.gameLengthSeconds,
+                        )}
+                      />
+                      {visibleTeams[0] && <TeamPanel team={visibleTeams[0]} />}
+                    </div>
+                    {visibleTeams[1] && <TeamPanel team={visibleTeams[1]} />}
+                  </div>
 
-          {!noLiveGameMessage && (
-            <RecommendedBuild recommendation={activeRecommendation} />
+                  <RecommendedBuild recommendation={activeRecommendation} />
+                </>
+              )}
+            </>
           )}
         </main>
 
@@ -347,7 +442,7 @@ function formatGameDuration(gameLengthSeconds?: number) {
 
 function NoLiveGamePanel({ message }: { message: string }) {
   return (
-    <section className="rounded-[28px] border border-white/10 bg-slate-950/75 px-4 py-6 text-center">
+    <section className="flex min-h-[calc(100vh-3rem)] flex-col items-center justify-center rounded-[28px] border border-white/10 bg-slate-950/75 px-4 py-6 text-center">
       <p className="text-[10px] uppercase tracking-[0.22em] text-slate-500">
         Live game
       </p>
@@ -359,81 +454,190 @@ function NoLiveGamePanel({ message }: { message: string }) {
   )
 }
 
+function MatchHistoryPanel({
+  entries,
+}: {
+  entries: ReadonlyArray<{
+    id: number
+    result: 'Win' | 'Loss'
+    queue: string
+    duration: string
+    champion: string
+    kda: string
+    role: string
+  }>
+}) {
+  return (
+    <section className="rounded-[30px] border border-white/10 bg-slate-950/75 p-5 shadow-[0_20px_70px_rgba(8,15,35,0.35)]">
+      <div className="flex items-center justify-between">
+        <div>
+          <p className="text-xs uppercase tracking-[0.2em] text-cyan-300/80">
+            Match history
+          </p>
+          <h3 className="mt-1 text-xl font-semibold text-white">
+            Recent results
+          </h3>
+        </div>
+        <div className="rounded-full bg-white/[0.06] px-3 py-1 text-xs text-slate-300">
+          {entries.length} matches
+        </div>
+      </div>
+
+      <div className="mt-5 space-y-3">
+        {entries.map((entry) => (
+          <div
+            key={entry.id}
+            className="flex flex-col gap-2 rounded-[22px] border border-white/10 bg-white/[0.04] px-4 py-3"
+          >
+            <div
+              className={`rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] ${
+                entry.result === 'Win'
+                  ? 'bg-emerald-400/15 text-emerald-200'
+                  : 'bg-rose-500/15 text-rose-200'
+              }`}
+            >
+              {entry.result}
+            </div>
+            <div className="text-sm text-slate-200">{entry.queue}</div>
+            <div className="text-sm text-slate-400">{entry.duration}</div>
+            <div className="flex flex-wrap items-center gap-3">
+              <div className="text-sm font-semibold text-white">
+                {entry.champion}
+              </div>
+              <div className="rounded-full bg-white/[0.06] px-3 py-1 text-xs text-slate-300">
+                {entry.role}
+              </div>
+              <div className="text-sm text-slate-300">{entry.kda}</div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </section>
+  )
+}
+
+function MiddleSkeleton() {
+  return (
+    <div className="flex min-h-[calc(100vh-3rem)] flex-col gap-6">
+      <div className="grid gap-6 xl:grid-cols-2">
+        <div className="space-y-6">
+          <SkeletonCard className="h-20" />
+          <SkeletonCard className="h-[280px]" />
+        </div>
+        <SkeletonCard className="h-full" />
+      </div>
+      <SkeletonCard className="flex-1" />
+    </div>
+  )
+}
+
+function SkeletonCard({ className }: { className: string }) {
+  return (
+    <div
+      className={`animate-pulse rounded-[28px] border border-white/10 bg-white/[0.04] ${className}`}
+    >
+      <div className="h-full w-full rounded-[28px] bg-[linear-gradient(110deg,rgba(255,255,255,0.04),rgba(255,255,255,0.09),rgba(255,255,255,0.04))]" />
+    </div>
+  )
+}
+
 function getTeamsFromLiveSummary(
   summary: LiveGameSummary | null,
   useMockFallback: boolean,
 ): Team[] {
-  if (summary?.myTeam?.length || summary?.enemyTeam?.length) {
-    const participants = [...(summary.myTeam ?? []), ...(summary.enemyTeam ?? [])]
-    const blueParticipants = participants.filter(
-      (participant) => getTeamId(participant) === 100,
-    )
-    const redParticipants = participants.filter(
-      (participant) => getTeamId(participant) === 200,
-    )
-
-    const myTeamFallback = summary.myTeam ?? []
-    const enemyTeamFallback = summary.enemyTeam ?? []
-
-    return [
-      {
-        name: 'Blue Team',
-        side: 'blue',
-        players: (blueParticipants.length ? blueParticipants : myTeamFallback).map(
-          (participant, index) =>
-            mapParticipantToPlayer(
-              participant,
-              index,
-              'from-cyan-400 to-blue-500',
-            ),
-        ),
-      },
-      {
-        name: 'Red Team',
-        side: 'red',
-        players: (redParticipants.length ? redParticipants : enemyTeamFallback).map(
-          (participant, index) =>
-            mapParticipantToPlayer(
-              participant,
-              index,
-              'from-rose-500 to-red-500',
-            ),
-        ),
-      },
-    ]
-  }
-
   const participants = getLiveParticipants(summary)
 
   if (!participants.length) {
     return useMockFallback ? teams : []
   }
 
-  let blueParticipants = participants.filter(
-    (participant) => getTeamId(participant) === 100,
-  )
-  let redParticipants = participants.filter(
-    (participant) => getTeamId(participant) === 200,
-  )
+  const connectedParticipant = getConnectedParticipant(summary, participants)
+  const connectedTeamId = normalizeTeamId(connectedParticipant?.teamId)
 
-  if (!blueParticipants.length && !redParticipants.length) {
-    blueParticipants = participants.slice(0, 5)
-    redParticipants = participants.slice(5, 10)
+  let myTeamParticipants = summary?.myTeam ?? []
+  let enemyTeamParticipants = summary?.enemyTeam ?? []
+
+  if (!myTeamParticipants.length && !enemyTeamParticipants.length) {
+    if (connectedTeamId) {
+      myTeamParticipants = participants.filter(
+        (participant) => normalizeTeamId(participant.teamId) === connectedTeamId,
+      )
+      enemyTeamParticipants = participants.filter(
+        (participant) =>
+          normalizeTeamId(participant.teamId) &&
+          normalizeTeamId(participant.teamId) !== connectedTeamId,
+      )
+    } else {
+      myTeamParticipants = participants.slice(0, 5)
+      enemyTeamParticipants = participants.slice(5, 10)
+    }
+  } else if (connectedTeamId) {
+    const myTeamId = normalizeTeamId(myTeamParticipants[0]?.teamId)
+    const enemyTeamId = normalizeTeamId(enemyTeamParticipants[0]?.teamId)
+
+    if (myTeamId !== connectedTeamId && enemyTeamId === connectedTeamId) {
+      const temp = myTeamParticipants
+      myTeamParticipants = enemyTeamParticipants
+      enemyTeamParticipants = temp
+    }
   }
 
-  const bluePlayers = blueParticipants
+  const myTeamId =
+    connectedTeamId ?? normalizeTeamId(myTeamParticipants[0]?.teamId)
+  const enemyTeamId = normalizeTeamId(enemyTeamParticipants[0]?.teamId)
+
+  const myTeamSide = teamSideFromId(myTeamId)
+  const enemyTeamSide = teamSideFromId(enemyTeamId)
+
+  const myTeamCandidates = myTeamParticipants.filter(
+    (participant) =>
+      !matchesConnectedParticipant(participant, connectedParticipant, summary),
+  )
+
+  const myTeamPlayers = (myTeamCandidates.length
+    ? myTeamCandidates
+    : myTeamParticipants
+  )
+    .slice(0, 4)
     .map((participant, index) =>
-      mapParticipantToPlayer(participant, index, 'from-cyan-400 to-blue-500'),
+      mapParticipantToPlayer(
+        participant,
+        index,
+        myTeamSide === 'red'
+          ? 'from-rose-500 to-red-500'
+          : 'from-cyan-400 to-blue-500',
+      ),
     )
 
-  const redPlayers = redParticipants
-    .map((participant, index) =>
-      mapParticipantToPlayer(participant, index, 'from-rose-500 to-red-500'),
-    )
+  const enemyTeamPlayers = (enemyTeamParticipants.length
+    ? enemyTeamParticipants
+    : participants
+        .filter(
+          (participant) =>
+            normalizeTeamId(participant.teamId) !== myTeamId,
+        )
+        .slice(0, 5)
+  ).map((participant, index) =>
+    mapParticipantToPlayer(
+      participant,
+      index,
+      enemyTeamSide === 'red'
+        ? 'from-rose-500 to-red-500'
+        : 'from-cyan-400 to-blue-500',
+    ),
+  )
 
   return [
-    { name: 'Blue Team', side: 'blue', players: bluePlayers },
-    { name: 'Red Team', side: 'red', players: redPlayers },
+    {
+      name: teamNameFromId(myTeamId) || 'Blue Team',
+      side: myTeamSide,
+      players: myTeamPlayers,
+    },
+    {
+      name: teamNameFromId(enemyTeamId) || 'Red Team',
+      side: enemyTeamSide,
+      players: enemyTeamPlayers,
+    },
   ]
 }
 
@@ -605,6 +809,15 @@ function getLiveParticipants(summary: LiveGameSummary | null) {
     return summary.participants
   }
 
+  const teamParticipants = [
+    ...(summary?.myTeam ?? []),
+    ...(summary?.enemyTeam ?? []),
+  ]
+
+  if (teamParticipants.length) {
+    return teamParticipants
+  }
+
   const game = summary?.game as Record<string, unknown> | undefined
   const gameParticipants = game?.participants
 
@@ -625,6 +838,98 @@ function getTeamId(participant: LiveGameParticipant) {
   }
 
   return undefined
+}
+
+function normalizeTeamId(teamId: LiveGameParticipant['teamId']) {
+  if (typeof teamId === 'number') {
+    return teamId
+  }
+
+  if (typeof teamId === 'string') {
+    const parsed = Number(teamId)
+
+    return Number.isNaN(parsed) ? undefined : parsed
+  }
+
+  return undefined
+}
+
+function teamSideFromId(teamId?: number): Team['side'] {
+  return teamId === 200 ? 'red' : 'blue'
+}
+
+function teamNameFromId(teamId?: number) {
+  if (teamId === 100) {
+    return 'Blue Team'
+  }
+
+  if (teamId === 200) {
+    return 'Red Team'
+  }
+
+  return undefined
+}
+
+function getConnectedParticipant(
+  summary: LiveGameSummary | null,
+  participants: LiveGameParticipant[],
+) {
+  if (summary?.connectedParticipant) {
+    return summary.connectedParticipant
+  }
+
+  const playerSummonerName = summary?.playerSummonerName
+  const playerPuuid = summary?.playerPuuid
+
+  return participants.find((participant) => {
+    if (playerPuuid && getStringField(participant, 'puuid') === playerPuuid) {
+      return true
+    }
+
+    if (!playerSummonerName) {
+      return false
+    }
+
+    const participantName =
+      participant.riotId ||
+      participant.summonerName ||
+      getStringField(participant, 'gameName')
+
+    return participantName === playerSummonerName
+  })
+}
+
+function matchesConnectedParticipant(
+  participant: LiveGameParticipant,
+  connectedParticipant: LiveGameParticipant | undefined,
+  summary: LiveGameSummary | null,
+) {
+  if (!connectedParticipant && !summary?.playerSummonerName) {
+    return false
+  }
+
+  const participantName =
+    participant.riotId ||
+    participant.summonerName ||
+    getStringField(participant, 'gameName')
+
+  const connectedName = connectedParticipant
+    ? connectedParticipant.riotId || connectedParticipant.summonerName
+    : summary?.playerSummonerName
+
+  if (connectedName && participantName && connectedName === participantName) {
+    return true
+  }
+
+  const connectedPuuid =
+    getStringField(connectedParticipant as LiveGameParticipant, 'puuid') ||
+    summary?.playerPuuid
+
+  if (connectedPuuid && getStringField(participant, 'puuid') === connectedPuuid) {
+    return true
+  }
+
+  return false
 }
 
 function getNumberField(source: Record<string, unknown>, key: string) {

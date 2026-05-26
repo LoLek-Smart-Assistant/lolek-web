@@ -5,6 +5,8 @@ type RiotConnectPanelProps = {
   tagline: string
   platform: string
   isConnecting: boolean
+  isConnected: boolean
+  isEditing: boolean
   variant?: 'card' | 'embedded'
   onRiotIdChange: (value: string) => void
   onTaglineChange: (value: string) => void
@@ -17,6 +19,8 @@ export function RiotConnectPanel({
   tagline,
   platform,
   isConnecting,
+  isConnected,
+  isEditing,
   variant = 'card',
   onRiotIdChange,
   onTaglineChange,
@@ -28,15 +32,22 @@ export function RiotConnectPanel({
       ? ''
       : 'rounded-[26px] border border-white/10 bg-white/[0.04] p-4'
 
+  const isFormEditable = !isConnected || isEditing
+
   return (
     <section className={containerClassName}>
       <div className="grid gap-4">
         <label className="grid gap-2 text-xs font-medium text-slate-400">
           Riot name + tag
-          <div className="flex items-center gap-2 rounded-2xl border border-white/10 bg-slate-900/80 px-4 py-3">
+          <div
+            className={`flex items-center gap-2 rounded-2xl border border-white/10 bg-slate-900/80 px-4 py-3 ${
+              isFormEditable ? '' : 'opacity-60'
+            }`}
+          >
             <input
               type="text"
               value={riotId}
+              readOnly={!isFormEditable}
               onChange={(event) => onRiotIdChange(event.target.value)}
               placeholder="NeonFox"
               className="w-full bg-transparent text-sm text-white outline-none placeholder:text-slate-500"
@@ -45,6 +56,7 @@ export function RiotConnectPanel({
             <input
               type="text"
               value={tagline}
+              readOnly={!isFormEditable}
               onChange={(event) => onTaglineChange(event.target.value)}
               placeholder="EUW"
               maxLength={5}
@@ -59,17 +71,20 @@ export function RiotConnectPanel({
             <input
               type="text"
               value={platform}
+              readOnly={!isFormEditable}
               onChange={(event) => onPlatformChange(event.target.value)}
               placeholder="EUW1"
-              className="w-full rounded-2xl border border-white/10 bg-slate-900/80 px-4 py-3 text-sm text-white outline-none transition placeholder:text-slate-500 focus:border-cyan-400/40 focus:ring-2 focus:ring-cyan-400/20"
+              className={`w-full rounded-2xl border border-white/10 bg-slate-900/80 px-4 py-3 text-sm text-white outline-none transition placeholder:text-slate-500 focus:border-cyan-400/40 focus:ring-2 focus:ring-cyan-400/20 ${
+                isFormEditable ? '' : 'opacity-60'
+              }`}
             />
           </label>
 
           <button
             type="button"
             onClick={onConnect}
-            disabled={isConnecting}
-            className="inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-cyan-400 to-fuchsia-500 px-4 py-3 text-sm font-semibold text-slate-950 shadow-[0_0_30px_rgba(34,211,238,0.22)] transition hover:scale-[1.01] disabled:cursor-wait disabled:opacity-80 sm:w-auto"
+            disabled={isConnecting || !isFormEditable}
+            className="inline-flex min-h-10 w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-cyan-400 to-fuchsia-500 px-3 py-2.5 text-xs font-semibold text-slate-950 shadow-[0_0_24px_rgba(34,211,238,0.2)] transition hover:scale-[1.01] disabled:cursor-wait disabled:opacity-80 sm:w-auto"
           >
             {isConnecting ? (
               <LoaderCircle className="h-4 w-4 animate-spin" />

@@ -11,15 +11,15 @@ type TeamPanelProps = {
 export function TeamPanel({ team }: TeamPanelProps) {
   const accent =
     team.side === 'blue'
-      ? 'from-cyan-400/20 to-blue-500/5 border-cyan-400/15'
-      : 'from-fuchsia-500/20 to-rose-500/5 border-fuchsia-400/15'
+      ? 'from-cyan-400/30 to-blue-500/10 border-cyan-400/20'
+      : 'from-rose-500/30 to-red-500/10 border-rose-400/20'
 
   return (
     <motion.section
       initial={{ opacity: 0, y: 18 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.35 }}
-      className={`rounded-[28px] border bg-gradient-to-b ${accent} px-4 py-3.5 shadow-[0_20px_70px_rgba(8,15,35,0.35)]`}
+      className={`rounded-[28px] border bg-gradient-to-b ${accent} px-4 py-3.5 shadow-[0_20px_70px_rgba(8,15,35,0.45)]`}
     >
       <div className="mb-3 flex items-center justify-between gap-3">
         <div>
