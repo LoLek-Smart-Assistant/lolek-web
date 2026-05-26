@@ -14,6 +14,8 @@ import {
   type Recommendation,
   type Team,
 } from '../../data/mockRiot'
+import { recommendItems } from '../../engine/recommender'
+import type { ItemRecommendation } from '../../engine/types'
 import authService from '../../services/authService'
 import {
   connectLiveGameSummary,
@@ -250,6 +252,15 @@ export function DashboardScreen() {
     recommendation,
   )
   const visibleTeams = getTeamsFromLiveSummary(liveGameSummary, shouldUseMockData)
+  const engineRecommendations = recommendItems(
+    activeRecommendation.champion,
+    getEnemyChampionNames(liveGameSummary, visibleTeams, shouldUseMockData),
+    6,
+  )
+  const displayedRecommendation = getRecommendationFromEngine(
+    activeRecommendation,
+    engineRecommendations,
+  )
 
   return (
     <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(8,145,178,0.16),_transparent_28%),radial-gradient(circle_at_top_right,_rgba(168,85,247,0.14),_transparent_26%),linear-gradient(180deg,_#020617_0%,_#0f172a_45%,_#020617_100%)] px-4 py-4 text-white sm:px-6 lg:px-6">
@@ -310,7 +321,7 @@ export function DashboardScreen() {
           </div>
 
           {!noLiveGameMessage && (
-            <RecommendedBuild recommendation={activeRecommendation} />
+            <RecommendedBuild recommendation={displayedRecommendation} />
           )}
         </main>
 
@@ -331,6 +342,89 @@ export function DashboardScreen() {
         </aside>
       </div>
     </div>
+  )
+}
+
+function getRecommendationFromEngine(
+  fallback: Recommendation,
+  engineRecommendations: ItemRecommendation[],
+): Recommendation {
+  if (!engineRecommendations.length) {
+    return fallback
+  }
+
+  const recommendedItems = engineRecommendations.map(
+    (recommendationItem) => recommendationItem.item,
+  )
+  const reasons = engineRecommendations.flatMap(
+    (recommendationItem) => recommendationItem.reasons,
+  )
+
+  return {
+    ...fallback,
+    nextItems: recommendedItems.slice(0, 3),
+    buildPath: recommendedItems,
+    alternatives: engineRecommendations
+      .slice(3)
+      .map(
+        (recommendationItem) =>
+          `${recommendationItem.item} (${recommendationItem.score})`,
+      ),
+    reasoning: [...new Set(reasons)].slice(0, 3),
+    winRateNote: 'Offline semantic recommendation based on enemy champions',
+  }
+}
+
+function getEnemyChampionNames(
+  summary: LiveGameSummary | null,
+  visibleTeams: Team[],
+  useMockFallback: boolean,
+) {
+  if (summary?.enemyTeam?.length) {
+    return summary.enemyTeam.map(getParticipantChampionName)
+  }
+
+  const participants = getLiveParticipants(summary)
+  const connectedTeamId = getConnectedTeamId(summary)
+
+  if (participants.length && connectedTeamId) {
+    return participants
+      .filter((participant) => getTeamId(participant) !== connectedTeamId)
+      .map(getParticipantChampionName)
+  }
+
+  if (useMockFallback) {
+    return teams[1]?.players.map((player) => player.champion) ?? []
+  }
+
+  return visibleTeams[1]?.players.map((player) => player.champion) ?? []
+}
+
+function getConnectedTeamId(summary: LiveGameSummary | null) {
+  const connectedParticipant = summary?.connectedParticipant
+
+  if (connectedParticipant) {
+    return getTeamId(connectedParticipant)
+  }
+
+  const playerPuuid = summary?.playerPuuid
+  const playerSummonerName = summary?.playerSummonerName
+
+  return getLiveParticipants(summary)
+    .filter(
+      (participant) =>
+        participant.puuid === playerPuuid ||
+        participant.summonerName === playerSummonerName,
+    )
+    .map(getTeamId)
+    .find((teamId): teamId is number => typeof teamId === 'number')
+}
+
+function getParticipantChampionName(participant: LiveGameParticipant) {
+  return (
+    participant.championName ||
+    getStringField(participant, 'champion') ||
+    formatChampionId(participant.championId ?? getChampionKey(participant))
   )
 }
 
