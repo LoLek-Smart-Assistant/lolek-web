@@ -1,4 +1,5 @@
 import { motion } from 'framer-motion'
+import { useEffect, useState } from 'react'
 import { BrainCircuit, ChevronRight } from 'lucide-react'
 
 import type { Recommendation } from '../data/mockRiot'
@@ -12,6 +13,32 @@ export function RecommendedBuild({
   recommendation,
 }: RecommendedBuildProps) {
   const featuredItems = recommendation.buildPath.slice(0, 6)
+  const [itemsReady, setItemsReady] = useState(
+    Boolean(itemService.getCachedItems()),
+  )
+
+  useEffect(() => {
+    if (itemsReady) {
+      return
+    }
+
+    let isActive = true
+
+    itemService
+      .fetchItems()
+      .then(() => {
+        if (isActive) {
+          setItemsReady(true)
+        }
+      })
+      .catch((error) => {
+        console.error('Item fetch error:', error)
+      })
+
+    return () => {
+      isActive = false
+    }
+  }, [itemsReady])
 
   return (
     <motion.section
