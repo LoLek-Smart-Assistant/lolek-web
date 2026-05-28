@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react'
 import { ChatSection } from '../../components/ChatSection'
 import { MatchStatusCard } from '../../components/MatchStatusCard'
 import { RecommendedBuild } from '../../components/RecommendedBuild'
+import PushToTalkButton from '../../components/PushToTalkButton'
 import { Sidebar } from '../../components/Sidebar'
 import { TeamPanel } from '../../components/TeamPanel'
 import {
@@ -23,6 +24,7 @@ import {
   type LiveGameParticipant,
 } from '../../services/liveGameSummarySocket'
 import userService from '../../services/userService'
+import type { ParsedVoiceResponse } from '../../voice/types'
 
 export function DashboardScreen() {
   const [activeTab, setActiveTab] = useState<'dashboard' | 'history'>(
@@ -40,6 +42,8 @@ export function DashboardScreen() {
   const [messages, setMessages] = useState(initialChat)
   const [pendingMessage, setPendingMessage] = useState('')
   const [isTyping, setIsTyping] = useState(false)
+  const [voiceTranscript, setVoiceTranscript] = useState<string | null>(null)
+  const [voiceParsedResponse, setVoiceParsedResponse] = useState<ParsedVoiceResponse | null>(null)
   const [username, setUsername] = useState<string | null>(null)
   const [, setIsInitializing] = useState(true)
   const [liveGameSummary, setLiveGameSummary] = useState<LiveGameSummary | null>(
@@ -191,11 +195,18 @@ export function DashboardScreen() {
       liveGameSummary?.game?.gameLengthSeconds
 
     if (typeof baseDuration !== 'number') {
-      setDurationSeconds(undefined)
-      return
+      const resetId = window.setTimeout(() => {
+        setDurationSeconds(undefined)
+      }, 0)
+
+      return () => {
+        window.clearTimeout(resetId)
+      }
     }
 
-    setDurationSeconds(baseDuration)
+    const initializeId = window.setTimeout(() => {
+      setDurationSeconds(baseDuration)
+    }, 0)
 
     const intervalId = window.setInterval(() => {
       setDurationSeconds((current) =>
@@ -204,6 +215,7 @@ export function DashboardScreen() {
     }, 1000)
 
     return () => {
+      window.clearTimeout(initializeId)
       window.clearInterval(intervalId)
     }
   }, [liveGameSummary?.gameDuration, liveGameSummary?.game?.gameLengthSeconds])
@@ -338,6 +350,18 @@ export function DashboardScreen() {
     }, 1100)
   }
 
+  const handleVoiceResult = (
+    transcript: string | null,
+    parsed: ParsedVoiceResponse | null,
+  ) => {
+    setVoiceTranscript(transcript)
+    setVoiceParsedResponse(parsed)
+
+    if (transcript) {
+      setPendingMessage(transcript)
+    }
+  }
+
   const noLiveGameMessage =
     liveGameMessage ||
     (isRiotConnected && !liveGameSummary ? 'Waiting for live game data.' : null)
@@ -426,6 +450,31 @@ export function DashboardScreen() {
           <div className="absolute -left-10 top-24 h-28 w-28 rounded-full bg-fuchsia-500/20 blur-3xl" />
 
           <div className="relative">
+            <div className="mb-5 rounded-[28px] border border-white/8 bg-white/[0.04] p-4">
+              <div className="mb-3 text-xs uppercase tracking-[0.18em] text-slate-400">
+                Voice input
+              </div>
+              <PushToTalkButton onResult={handleVoiceResult} />
+              {(voiceTranscript || voiceParsedResponse) && (
+                <div className="mt-4 space-y-2 rounded-2xl border border-white/8 bg-slate-950/60 p-3 text-sm text-slate-200">
+                  {voiceTranscript ? (
+                    <div>
+                      <span className="text-slate-400">Transcript: </span>
+                      {voiceTranscript}
+                    </div>
+                  ) : null}
+                  {voiceParsedResponse ? (
+                    <div className="text-slate-300">
+                      <span className="text-slate-400">Intent: </span>
+                      {voiceParsedResponse.intent}
+                      {voiceParsedResponse.champion ? (
+                        <span className="ml-2 text-cyan-300">• {voiceParsedResponse.champion}</span>
+                      ) : null}
+                    </div>
+                  ) : null}
+                </div>
+              )}
+            </div>
             <ChatSection
               messages={messages}
               pendingMessage={pendingMessage}
@@ -1020,11 +1069,9 @@ function matchesConnectedParticipant(
     getStringField(connectedParticipant as LiveGameParticipant, 'puuid') ||
     summary?.playerPuuid
 
-  if (connectedPuuid && getStringField(participant, 'puuid') === connectedPuuid) {
-    return true
-  }
-
-  return false
+  return Boolean(
+    connectedPuuid && getStringField(participant, 'puuid') === connectedPuuid,
+  )
 }
 
 function getNumberField(source: Record<string, unknown>, key: string) {
