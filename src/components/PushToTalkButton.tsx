@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useRef, useState } from 'react';
 import useVoiceRecognition from '../voice/useVoiceRecognition';
 import type { ParsedVoiceResponse } from '../voice/types';
 
@@ -14,6 +14,9 @@ export const PushToTalkButton: React.FC<Props> = ({ onResult }) => {
   // local pressed state to handle mouseleave behaviour
   const [pressed, setPressed] = useState(false);
 
+  // Track the last response ID to prevent duplicate onResult calls
+  const lastResponseIdRef = useRef<string | null>(null);
+
   // call onResult when transcript updates
   React.useEffect(() => {
     if (!onResult) {
@@ -21,9 +24,19 @@ export const PushToTalkButton: React.FC<Props> = ({ onResult }) => {
     }
 
     if (transcript == null && parsedResponse == null) {
+      lastResponseIdRef.current = null;
       return;
     }
 
+    // Create a unique ID for this response
+    const responseId = `${transcript}|${JSON.stringify(parsedResponse)}`;
+
+    // Only call onResult if this is a new response
+    if (lastResponseIdRef.current === responseId) {
+      return;
+    }
+
+    lastResponseIdRef.current = responseId;
     onResult(transcript ?? null, parsedResponse ?? null);
   }, [transcript, parsedResponse, onResult]);
 

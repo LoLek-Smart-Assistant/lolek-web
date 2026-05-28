@@ -129,6 +129,12 @@ export function useVoiceRecognition(): UseVoiceRecognitionState {
     setError(null);
     try {
       const res: VoiceResponse = await uploadVoiceAudio(blob);
+      // Log the transcript and parsed response so developers can inspect what the backend returned
+      // This answers the request to "log what i get from the transcribed audio".
+      // You can remove or change this to a different logging/reporting mechanism if desired.
+      console.log('[voice] transcript:', res.transcript);
+      console.log('[voice] parsed response:', res.parsed);
+
       setTranscript(res.transcript ?? null);
       setParsedResponse(res.parsed ?? null);
     } catch (err: unknown) {

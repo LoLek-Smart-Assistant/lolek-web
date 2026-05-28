@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { ChatSection } from '../../components/ChatSection'
 import { MatchStatusCard } from '../../components/MatchStatusCard'
@@ -53,6 +53,11 @@ export function DashboardScreen() {
   const [durationSeconds, setDurationSeconds] = useState<number | undefined>(
     undefined,
   )
+  const [playerCurrentItems, setPlayerCurrentItems] = useState<string[]>([
+    'Luden', 'Sorcerer', 'Amplifying',
+  ])
+  const [allChampionItems, setAllChampionItems] = useState<Record<string, (string | null)[]>>({})
+  const lastProcessedResponseRef = useRef<string | null>(null)
   const timeoutRef = useRef<number | null>(null)
   const mockHistory = [
     {
@@ -350,29 +355,101 @@ export function DashboardScreen() {
     }, 1100)
   }
 
-  const handleVoiceResult = (
-    transcript: string | null,
-    parsed: ParsedVoiceResponse | null,
-  ) => {
-    setVoiceTranscript(transcript)
-    setVoiceParsedResponse(parsed)
+  // Calculate visible teams and mock data flag early
+  const shouldUseMockData = !isRiotConnected
+  const visibleTeams = getTeamsFromLiveSummary(liveGameSummary, shouldUseMockData)
 
-    if (transcript) {
-      setPendingMessage(transcript)
-    }
+  const handleVoiceResult = useCallback(
+    (transcript: string | null, parsed: ParsedVoiceResponse | null) => {
+      setVoiceTranscript(transcript)
+      setVoiceParsedResponse(parsed)
+
+      if (transcript) {
+        setPendingMessage(transcript)
+      }
+
+      // Create a unique ID for this response to prevent duplicate processing
+      const responseId = `${transcript}|${parsed?.champion}|${parsed?.items?.join(',')}`
+
+      // Skip if we've already processed this exact response
+      if (lastProcessedResponseRef.current === responseId) {
+        return
+      }
+
+      // Reset if both transcript and parsed are null (user cleared the response)
+      if (!transcript && !parsed) {
+        lastProcessedResponseRef.current = null
+        return
+      }
+
+      lastProcessedResponseRef.current = responseId
+
+      // If voice response contains a champion and items, add items only if champion is recognized in the game
+      if (parsed?.champion && parsed?.items && parsed.items.length > 0) {
+        const champName = parsed.champion.trim()
+        
+        // Get current teams to validate champion
+        const currentTeams = getTeamsFromLiveSummary(liveGameSummary, shouldUseMockData)
+        const currentChampNames = currentTeams.flatMap((team) =>
+          team.players.map((player) => player.champion),
+        )
+        
+        // Only add items if the champion is recognized in the current game
+        if (currentChampNames.some((name) => name.toLowerCase() === champName.toLowerCase())) {
+          setAllChampionItems((current) => {
+            const champSlots = current[champName] ?? Array(6).fill(null)
+
+            // Add ONLY the first item from the response to the first available slot
+            if (parsed.items && parsed.items.length > 0) {
+              const item = parsed.items[0]
+              const emptySlotIndex = champSlots.findIndex((slot) => slot === null)
+              if (emptySlotIndex !== -1) {
+                champSlots[emptySlotIndex] = item
+              }
+            }
+
+            return {
+              ...current,
+              [champName]: champSlots,
+            }
+          })
+        }
+      }
+    },
+    [liveGameSummary, shouldUseMockData],
+  )
+
+   const handleAddItemToPlayer = (itemName: string) => {
+     setPlayerCurrentItems((current) => {
+       // Prevent adding duplicate items
+       if (current.includes(itemName)) {
+         return current
+       }
+       return [...current, itemName]
+     })
+   }
+
+  const handleRemoveChampionItem = (champName: string, slotIndex: number) => {
+    setAllChampionItems((current) => {
+      const champSlots = [...(current[champName] ?? Array(6).fill(null))]
+      champSlots[slotIndex] = null
+      return {
+        ...current,
+        [champName]: champSlots,
+      }
+    })
   }
+
 
   const noLiveGameMessage =
     liveGameMessage ||
     (isRiotConnected && !liveGameSummary ? 'Waiting for live game data.' : null)
   const shouldShowMiddleSkeleton =
     !isRiotConnected || isConnecting || isEditingRiotProfile
-  const shouldUseMockData = !isRiotConnected
   const activeRecommendation = getRecommendationFromLiveSummary(
     liveGameSummary,
     recommendation,
   )
-  const visibleTeams = getTeamsFromLiveSummary(liveGameSummary, shouldUseMockData)
   const engineRecommendations = recommendItems(
     activeRecommendation.champion,
     getEnemyChampionNames(liveGameSummary, visibleTeams, shouldUseMockData),
@@ -432,14 +509,18 @@ export function DashboardScreen() {
                             liveGameSummary?.game?.gameLengthSeconds,
                         )}
                       />
-                      {visibleTeams[0] && <TeamPanel team={visibleTeams[0]} />}
+                      {visibleTeams[0] && <TeamPanel team={visibleTeams[0]} champItemsMap={allChampionItems} onRemoveItem={handleRemoveChampionItem} />}
                     </div>
-                    {visibleTeams[1] && <TeamPanel team={visibleTeams[1]} />}
+                    {visibleTeams[1] && <TeamPanel team={visibleTeams[1]} champItemsMap={allChampionItems} onRemoveItem={handleRemoveChampionItem} />}
                   </div>
                 </>
               )}
               {!noLiveGameMessage && (
-                <RecommendedBuild recommendation={displayedRecommendation} />
+                <RecommendedBuild
+                  recommendation={displayedRecommendation}
+                  playerCurrentItems={playerCurrentItems}
+                  onAddItem={handleAddItemToPlayer}
+                />
               )}
             </>
           )}
@@ -1126,3 +1207,4 @@ function getChampionImageUrl(championImage?: string) {
 
   return championImage
 }
+
