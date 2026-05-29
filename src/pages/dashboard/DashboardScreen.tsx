@@ -1,4 +1,4 @@
-import { type CSSProperties, useEffect, useRef, useState } from 'react'
+import {type CSSProperties, useCallback, useEffect, useRef, useState} from 'react'
 
 import { ChatSection } from '../../components/ChatSection'
 import { MatchHistoryPanel } from '../../components/dashboard/MatchHistoryPanel'
@@ -8,6 +8,7 @@ import { NoRiotAccountPanel } from '../../components/dashboard/NoRiotAccountPane
 import { WelcomePanel } from '../../components/dashboard/WelcomePanel'
 import { MatchStatusCard } from '../../components/MatchStatusCard'
 import { RecommendedBuild } from '../../components/RecommendedBuild'
+import PushToTalkButton from '../../components/PushToTalkButton'
 import { Sidebar } from '../../components/Sidebar'
 import { TeamPanel } from '../../components/TeamPanel'
 import { mockHistory } from '../../data/mockHistory'
@@ -20,9 +21,9 @@ import {
 } from '../../helpers/dashboardLiveGameHelpers'
 import { getRecommendationFromEngine } from '../../helpers/dashboardRecommendationHelpers'
 import {
-  initialChat,
-  liveMatch,
-  recommendation,
+    initialChat,
+    liveMatch,
+    recommendation,
 } from '../../data/mockRiot'
 import { recommendItems } from '../../engine/recommender'
 import authService from '../../services/authService'
@@ -31,6 +32,8 @@ import {
   type LiveGameSummary,
 } from '../../services/liveGameSummarySocket'
 import userService from '../../services/userService'
+import type { ParsedVoiceResponse } from '../../voice/types'
+
 
 export function DashboardScreen() {
   const [activeTab, setActiveTab] = useState<'dashboard' | 'history'>(
@@ -49,6 +52,8 @@ export function DashboardScreen() {
   const [messages, setMessages] = useState(initialChat)
   const [pendingMessage, setPendingMessage] = useState('')
   const [isTyping, setIsTyping] = useState(false)
+  const [voiceTranscript, setVoiceTranscript] = useState<string | null>(null)
+  const [voiceParsedResponse, setVoiceParsedResponse] = useState<ParsedVoiceResponse | null>(null)
   const [username, setUsername] = useState<string | null>(null)
   const [, setIsInitializing] = useState(true)
   const [liveGameSummary, setLiveGameSummary] = useState<LiveGameSummary | null>(
@@ -58,6 +63,11 @@ export function DashboardScreen() {
   const [durationSeconds, setDurationSeconds] = useState<number | undefined>(
     undefined,
   )
+  const [playerCurrentItems, setPlayerCurrentItems] = useState<string[]>([
+    'Luden', 'Sorcerer', 'Amplifying',
+  ])
+  const [allChampionItems, setAllChampionItems] = useState<Record<string, (string | null)[]>>({})
+  const lastProcessedResponseRef = useRef<string | null>(null)
   const timeoutRef = useRef<number | null>(null)
   const syncProfileFromApi = async () => {
     try {
@@ -161,11 +171,18 @@ export function DashboardScreen() {
       liveGameSummary?.game?.gameLengthSeconds
 
     if (typeof baseDuration !== 'number') {
-      setDurationSeconds(undefined)
-      return
+      const resetId = window.setTimeout(() => {
+        setDurationSeconds(undefined)
+      }, 0)
+
+      return () => {
+        window.clearTimeout(resetId)
+      }
     }
 
-    setDurationSeconds(baseDuration)
+    const initializeId = window.setTimeout(() => {
+      setDurationSeconds(baseDuration)
+    }, 0)
 
     const intervalId = window.setInterval(() => {
       setDurationSeconds((current) =>
@@ -174,6 +191,7 @@ export function DashboardScreen() {
     }, 1000)
 
     return () => {
+      window.clearTimeout(initializeId)
       window.clearInterval(intervalId)
     }
   }, [liveGameSummary?.gameDuration, liveGameSummary?.game?.gameLengthSeconds])
@@ -308,6 +326,92 @@ export function DashboardScreen() {
     }, 1100)
   }
 
+  // Calculate visible teams and mock data flag early
+  const shouldUseMockData = !isRiotConnected
+  const visibleTeams = getTeamsFromLiveSummary(liveGameSummary, shouldUseMockData)
+
+  const handleVoiceResult = useCallback(
+    (transcript: string | null, parsed: ParsedVoiceResponse | null) => {
+      setVoiceTranscript(transcript)
+      setVoiceParsedResponse(parsed)
+
+      if (transcript) {
+        setPendingMessage(transcript)
+      }
+
+      // Create a unique ID for this response to prevent duplicate processing
+      const responseId = `${transcript}|${parsed?.champion}|${parsed?.items?.join(',')}`
+
+      // Skip if we've already processed this exact response
+      if (lastProcessedResponseRef.current === responseId) {
+        return
+      }
+
+      // Reset if both transcript and parsed are null (user cleared the response)
+      if (!transcript && !parsed) {
+        lastProcessedResponseRef.current = null
+        return
+      }
+
+      lastProcessedResponseRef.current = responseId
+
+      // If voice response contains a champion and items, add items only if champion is recognized in the game
+      if (parsed?.champion && parsed?.items && parsed.items.length > 0) {
+        const champName = parsed.champion.trim()
+
+        // Get current teams to validate champion
+        const currentTeams = getTeamsFromLiveSummary(liveGameSummary, shouldUseMockData)
+        const currentChampNames = currentTeams.flatMap((team) =>
+          team.players.map((player) => player.champion),
+        )
+
+        // Only add items if the champion is recognized in the current game
+        if (currentChampNames.some((name) => name.toLowerCase() === champName.toLowerCase())) {
+          setAllChampionItems((current) => {
+            const champSlots = current[champName] ?? Array(6).fill(null)
+
+            // Add ONLY the first item from the response to the first available slot
+            if (parsed.items && parsed.items.length > 0) {
+              const item = parsed.items[0]
+              const emptySlotIndex = champSlots.findIndex((slot) => slot === null)
+              if (emptySlotIndex !== -1) {
+                champSlots[emptySlotIndex] = item
+              }
+            }
+
+            return {
+              ...current,
+              [champName]: champSlots,
+            }
+          })
+        }
+      }
+    },
+    [liveGameSummary, shouldUseMockData],
+  )
+
+   const handleAddItemToPlayer = (itemName: string) => {
+     setPlayerCurrentItems((current) => {
+       // Prevent adding duplicate items
+       if (current.includes(itemName)) {
+         return current
+       }
+       return [...current, itemName]
+     })
+   }
+
+  const handleRemoveChampionItem = (champName: string, slotIndex: number) => {
+    setAllChampionItems((current) => {
+      const champSlots = [...(current[champName] ?? Array(6).fill(null))]
+      champSlots[slotIndex] = null
+      return {
+        ...current,
+        [champName]: champSlots,
+      }
+    })
+  }
+
+
   const noLiveGameMessage =
     liveGameMessage ||
     (isRiotConnected && !liveGameSummary ? 'Waiting for live game data.' : null)
@@ -315,12 +419,10 @@ export function DashboardScreen() {
   const shouldShowNoRiotPanel = isLoggedIn && !isRiotConnected
   const shouldShowMiddleSkeleton =
     isLoggedIn && isRiotConnected && (isConnecting || isEditingRiotProfile)
-  const shouldUseMockData = !isRiotConnected
   const activeRecommendation = getRecommendationFromLiveSummary(
     liveGameSummary,
     recommendation,
   )
-  const visibleTeams = getTeamsFromLiveSummary(liveGameSummary, shouldUseMockData)
   const engineRecommendations = recommendItems(
     activeRecommendation.champion,
     getEnemyChampionNames(liveGameSummary, visibleTeams, shouldUseMockData),
@@ -393,14 +495,18 @@ export function DashboardScreen() {
                             liveGameSummary?.game?.gameLengthSeconds,
                         )}
                       />
-                      {visibleTeams[0] && <TeamPanel team={visibleTeams[0]} />}
+                      {visibleTeams[0] && <TeamPanel team={visibleTeams[0]} champItemsMap={allChampionItems} onRemoveItem={handleRemoveChampionItem} />}
                     </div>
-                    {visibleTeams[1] && <TeamPanel team={visibleTeams[1]} />}
+                    {visibleTeams[1] && <TeamPanel team={visibleTeams[1]} champItemsMap={allChampionItems} onRemoveItem={handleRemoveChampionItem} />}
                   </div>
                 </>
               )}
               {!noLiveGameMessage && (
-                <RecommendedBuild recommendation={displayedRecommendation} />
+                <RecommendedBuild
+                  recommendation={displayedRecommendation}
+                  playerCurrentItems={playerCurrentItems}
+                  onAddItem={handleAddItemToPlayer}
+                />
               )}
             </>
           )}
@@ -411,18 +517,42 @@ export function DashboardScreen() {
             <div className="absolute inset-x-0 top-0 h-40 bg-[radial-gradient(circle_at_top,_rgba(34,211,238,0.24),_transparent_65%)]" />
             <div className="absolute -left-10 top-24 h-28 w-28 rounded-full bg-fuchsia-500/20 blur-3xl" />
 
-            <div className="relative">
-              <ChatSection
-                messages={messages}
-                pendingMessage={pendingMessage}
-                isTyping={isTyping}
-                compact
-                onPendingMessageChange={setPendingMessage}
-                onSendMessage={handleSendMessage}
-              />
+          <div className="relative">
+            <div className="mb-5 rounded-[28px] border border-white/8 bg-white/[0.04] p-4">
+              <div className="mb-3 text-xs uppercase tracking-[0.18em] text-slate-400">
+                Voice input
+              </div>
+              <PushToTalkButton onResult={handleVoiceResult} />
+              {(voiceTranscript || voiceParsedResponse) && (
+                <div className="mt-4 space-y-2 rounded-2xl border border-white/8 bg-slate-950/60 p-3 text-sm text-slate-200">
+                  {voiceTranscript ? (
+                    <div>
+                      <span className="text-slate-400">Transcript: </span>
+                      {voiceTranscript}
+                    </div>
+                  ) : null}
+                  {voiceParsedResponse ? (
+                    <div className="text-slate-300">
+                      <span className="text-slate-400">Intent: </span>
+                      {voiceParsedResponse.intent}
+                      {voiceParsedResponse.champion ? (
+                        <span className="ml-2 text-cyan-300">• {voiceParsedResponse.champion}</span>
+                      ) : null}
+                    </div>
+                  ) : null}
+                </div>
+              )}
             </div>
-          </aside>
-        ) : null}
+            <ChatSection
+              messages={messages}
+              pendingMessage={pendingMessage}
+              isTyping={isTyping}
+              compact
+              onPendingMessageChange={setPendingMessage}
+              onSendMessage={handleSendMessage}
+            />
+          </div>
+        </aside> ) : null }
       </div>
     </div>
   )

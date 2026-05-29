@@ -7,10 +7,14 @@ import itemService from '../services/itemService'
 
 type RecommendedBuildProps = {
   recommendation: Recommendation
+  playerCurrentItems?: string[]
+  onAddItem?: (item: string) => void
 }
 
 export function RecommendedBuild({
   recommendation,
+  playerCurrentItems = [],
+  onAddItem,
 }: RecommendedBuildProps) {
   const featuredItems = recommendation.buildPath.slice(0, 6)
   const [itemsReady, setItemsReady] = useState(
@@ -84,6 +88,8 @@ export function RecommendedBuild({
                         <RecommendedItemTile
                           item={item}
                           highlighted={index < recommendation.nextItems.length}
+                          isAdded={playerCurrentItems.includes(item)}
+                          onAddItem={onAddItem}
                         />
                         {index < featuredItems.length - 1 && (
                           <ChevronRight className="h-4 w-4 text-slate-500" />
@@ -157,11 +163,15 @@ export function RecommendedBuild({
 type RecommendedItemTileProps = {
   item: string
   highlighted: boolean
+  isAdded?: boolean
+  onAddItem?: (item: string) => void
 }
 
 function RecommendedItemTile({
   item,
   highlighted,
+  isAdded = false,
+  onAddItem,
 }: RecommendedItemTileProps) {
   const itemCode = item
     .split(' ')
@@ -172,13 +182,23 @@ function RecommendedItemTile({
 
   const image = itemService.getItemByName?.(item)?.image ?? undefined
 
+  const handleClick = () => {
+    if (onAddItem && !isAdded) {
+      onAddItem(item)
+    }
+  }
+
   return (
     <div className="w-16 shrink-0 text-center">
-      <div
-        className={`flex h-14 w-14 items-center justify-center rounded-xl border text-xs font-semibold ${
-          highlighted
-            ? 'border-amber-300/35 bg-[radial-gradient(circle_at_top,_rgba(251,191,36,0.32),_rgba(154,52,18,0.9))] text-amber-50 shadow-[0_0_22px_rgba(251,191,36,0.28)]'
-            : 'border-white/10 bg-[radial-gradient(circle_at_top,_rgba(34,211,238,0.16),_rgba(15,23,42,0.92))] text-slate-100'
+      <button
+        onClick={handleClick}
+        disabled={isAdded}
+        className={`flex h-14 w-14 items-center justify-center rounded-xl border text-xs font-semibold transition-all ${
+          isAdded
+            ? 'border-emerald-400/50 bg-emerald-500/20 text-emerald-100 cursor-default opacity-75'
+            : highlighted
+              ? 'border-amber-300/35 bg-[radial-gradient(circle_at_top,_rgba(251,191,36,0.32),_rgba(154,52,18,0.9))] text-amber-50 shadow-[0_0_22px_rgba(251,191,36,0.28)] cursor-pointer hover:shadow-[0_0_28px_rgba(251,191,36,0.35)]'
+              : 'border-white/10 bg-[radial-gradient(circle_at_top,_rgba(34,211,238,0.16),_rgba(15,23,42,0.92))] text-slate-100 cursor-pointer hover:border-cyan-400/30'
         }`}
       >
         {image ? (
@@ -186,8 +206,9 @@ function RecommendedItemTile({
         ) : (
           itemCode
         )}
-      </div>
+      </button>
       <p className="mt-1 truncate text-[9px] leading-3 text-slate-400">{item}</p>
+      {isAdded && <p className="mt-1 text-[8px] text-emerald-400">✓ Added</p>}
     </div>
   )
 }
