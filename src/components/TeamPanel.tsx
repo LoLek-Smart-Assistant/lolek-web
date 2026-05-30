@@ -6,9 +6,11 @@ import { PlayerCard } from './PlayerCard'
 
 type TeamPanelProps = {
   team: Team
+  champItemsMap?: Record<string, (string | null)[]>
+  onRemoveItem?: (champName: string, slotIndex: number) => void
 }
 
-export function TeamPanel({ team }: TeamPanelProps) {
+export function TeamPanel({ team, champItemsMap = {}, onRemoveItem }: TeamPanelProps) {
   const accent =
     team.side === 'blue'
       ? 'from-cyan-400/30 to-blue-500/10 border-cyan-400/20'
@@ -37,7 +39,12 @@ export function TeamPanel({ team }: TeamPanelProps) {
 
       <div className="space-y-2.5">
         {team.players.map((player) => (
-          <PlayerCard key={`${team.name}-${player.summonerName}`} player={player} />
+          <PlayerCard
+            key={`${team.name}-${player.summonerName}`}
+            player={player}
+            voiceAddedItems={champItemsMap[player.champion] ?? Array(6).fill(null)}
+            onRemoveItem={(slotIndex) => onRemoveItem?.(player.champion, slotIndex)}
+          />
         ))}
       </div>
     </motion.section>

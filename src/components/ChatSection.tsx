@@ -33,7 +33,7 @@ export function ChatSection({
         <div className="flex items-center gap-3">
           <div>
             <p className="text-sm font-medium uppercase tracking-[0.2em] text-cyan-300/80">
-              Match Chat
+              Chat with Lolek
             </p>
           </div>
         </div>

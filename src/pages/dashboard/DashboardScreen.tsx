@@ -1,46 +1,59 @@
-import { useEffect, useRef, useState } from 'react'
+import {type CSSProperties, useCallback, useEffect, useRef, useState} from 'react'
 
 import { ChatSection } from '../../components/ChatSection'
+import { MatchHistoryPanel } from '../../components/dashboard/MatchHistoryPanel'
+import { MiddleSkeleton } from '../../components/dashboard/MiddleSkeleton'
+import { NoLiveGamePanel } from '../../components/dashboard/NoLiveGamePanel'
+import { NoRiotAccountPanel } from '../../components/dashboard/NoRiotAccountPanel'
+import { WelcomePanel } from '../../components/dashboard/WelcomePanel'
 import { MatchStatusCard } from '../../components/MatchStatusCard'
 import { RecommendedBuild } from '../../components/RecommendedBuild'
+import PushToTalkButton from '../../components/PushToTalkButton'
 import { Sidebar } from '../../components/Sidebar'
 import { TeamPanel } from '../../components/TeamPanel'
-import { ItemsScreen } from './ItemsScreen'
+import { mockHistory } from '../../data/mockHistory'
 import {
-  initialChat,
-  liveMatch,
-  recommendation,
-  teams,
-  type Player,
-  type Recommendation,
-  type Team,
+  formatGameDuration,
+  getEnemyChampionNames,
+  getLiveGameDataFromMessage,
+  getRecommendationFromLiveSummary,
+  getTeamsFromLiveSummary,
+} from '../../helpers/dashboardLiveGameHelpers'
+import { getRecommendationFromEngine } from '../../helpers/dashboardRecommendationHelpers'
+import {
+    initialChat,
+    liveMatch,
+    recommendation,
 } from '../../data/mockRiot'
 import { recommendItems } from '../../engine/recommender'
-import type { ItemRecommendation } from '../../engine/types'
 import authService from '../../services/authService'
 import {
   connectLiveGameSummary,
   type LiveGameSummary,
-  type LiveGameParticipant,
 } from '../../services/liveGameSummarySocket'
 import userService from '../../services/userService'
+import type { ParsedVoiceResponse } from '../../voice/types'
+
 
 export function DashboardScreen() {
   const [activeTab, setActiveTab] = useState<'dashboard' | 'history' | 'items'>(
     'dashboard',
   )
   const [authMode, setAuthMode] = useState<'login' | 'register'>('login')
-  const [email, setEmail] = useState('jasna@smartassist.gg')
-  const [password, setPassword] = useState('hunter2')
-  const [riotId, setRiotId] = useState('NeonFox')
-  const [tagline, setTagline] = useState('EUW')
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [riotId, setRiotId] = useState('')
+  const [tagline, setTagline] = useState('')
   const [platform, setPlatform] = useState('EUW1')
   const [isConnecting, setIsConnecting] = useState(false)
   const [isRiotConnected, setIsRiotConnected] = useState(false)
   const [isEditingRiotProfile, setIsEditingRiotProfile] = useState(false)
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false)
   const [messages, setMessages] = useState(initialChat)
   const [pendingMessage, setPendingMessage] = useState('')
   const [isTyping, setIsTyping] = useState(false)
+  const [voiceTranscript, setVoiceTranscript] = useState<string | null>(null)
+  const [voiceParsedResponse, setVoiceParsedResponse] = useState<ParsedVoiceResponse | null>(null)
   const [username, setUsername] = useState<string | null>(null)
   const [, setIsInitializing] = useState(true)
   const [liveGameSummary, setLiveGameSummary] = useState<LiveGameSummary | null>(
@@ -50,46 +63,12 @@ export function DashboardScreen() {
   const [durationSeconds, setDurationSeconds] = useState<number | undefined>(
     undefined,
   )
+  const [playerCurrentItems, setPlayerCurrentItems] = useState<string[]>([
+    'Luden', 'Sorcerer', 'Amplifying',
+  ])
+  const [allChampionItems, setAllChampionItems] = useState<Record<string, (string | null)[]>>({})
+  const lastProcessedResponseRef = useRef<string | null>(null)
   const timeoutRef = useRef<number | null>(null)
-  const mockHistory = [
-    {
-      id: 1,
-      result: 'Win',
-      queue: 'Ranked Solo',
-      duration: '29:41',
-      champion: 'Ahri',
-      kda: '11 / 2 / 9',
-      role: 'Mid',
-    },
-    {
-      id: 2,
-      result: 'Loss',
-      queue: 'Ranked Solo',
-      duration: '34:12',
-      champion: 'Orianna',
-      kda: '3 / 6 / 7',
-      role: 'Mid',
-    },
-    {
-      id: 3,
-      result: 'Win',
-      queue: 'Flex 5v5',
-      duration: '26:08',
-      champion: 'Jinx',
-      kda: '9 / 1 / 12',
-      role: 'ADC',
-    },
-    {
-      id: 4,
-      result: 'Win',
-      queue: 'Ranked Solo',
-      duration: '31:55',
-      champion: 'Leona',
-      kda: '2 / 4 / 18',
-      role: 'Support',
-    },
-  ] as const
-
   const syncProfileFromApi = async () => {
     try {
       const profileResponse = await userService.getProfile()
@@ -192,11 +171,18 @@ export function DashboardScreen() {
       liveGameSummary?.game?.gameLengthSeconds
 
     if (typeof baseDuration !== 'number') {
-      setDurationSeconds(undefined)
-      return
+      const resetId = window.setTimeout(() => {
+        setDurationSeconds(undefined)
+      }, 0)
+
+      return () => {
+        window.clearTimeout(resetId)
+      }
     }
 
-    setDurationSeconds(baseDuration)
+    const initializeId = window.setTimeout(() => {
+      setDurationSeconds(baseDuration)
+    }, 0)
 
     const intervalId = window.setInterval(() => {
       setDurationSeconds((current) =>
@@ -205,6 +191,7 @@ export function DashboardScreen() {
     }, 1000)
 
     return () => {
+      window.clearTimeout(initializeId)
       window.clearInterval(intervalId)
     }
   }, [liveGameSummary?.gameDuration, liveGameSummary?.game?.gameLengthSeconds])
@@ -339,17 +326,103 @@ export function DashboardScreen() {
     }, 1100)
   }
 
+  // Calculate visible teams and mock data flag early
+  const shouldUseMockData = !isRiotConnected
+  const visibleTeams = getTeamsFromLiveSummary(liveGameSummary, shouldUseMockData)
+
+  const handleVoiceResult = useCallback(
+    (transcript: string | null, parsed: ParsedVoiceResponse | null) => {
+      setVoiceTranscript(transcript)
+      setVoiceParsedResponse(parsed)
+
+      if (transcript) {
+        setPendingMessage(transcript)
+      }
+
+      // Create a unique ID for this response to prevent duplicate processing
+      const responseId = `${transcript}|${parsed?.champion}|${parsed?.items?.join(',')}`
+
+      // Skip if we've already processed this exact response
+      if (lastProcessedResponseRef.current === responseId) {
+        return
+      }
+
+      // Reset if both transcript and parsed are null (user cleared the response)
+      if (!transcript && !parsed) {
+        lastProcessedResponseRef.current = null
+        return
+      }
+
+      lastProcessedResponseRef.current = responseId
+
+      // If voice response contains a champion and items, add items only if champion is recognized in the game
+      if (parsed?.champion && parsed?.items && parsed.items.length > 0) {
+        const champName = parsed.champion.trim()
+
+        // Get current teams to validate champion
+        const currentTeams = getTeamsFromLiveSummary(liveGameSummary, shouldUseMockData)
+        const currentChampNames = currentTeams.flatMap((team) =>
+          team.players.map((player) => player.champion),
+        )
+
+        // Only add items if the champion is recognized in the current game
+        if (currentChampNames.some((name) => name.toLowerCase() === champName.toLowerCase())) {
+          setAllChampionItems((current) => {
+            const champSlots = current[champName] ?? Array(6).fill(null)
+
+            // Add ONLY the first item from the response to the first available slot
+            if (parsed.items && parsed.items.length > 0) {
+              const item = parsed.items[0]
+              const emptySlotIndex = champSlots.findIndex((slot) => slot === null)
+              if (emptySlotIndex !== -1) {
+                champSlots[emptySlotIndex] = item
+              }
+            }
+
+            return {
+              ...current,
+              [champName]: champSlots,
+            }
+          })
+        }
+      }
+    },
+    [liveGameSummary, shouldUseMockData],
+  )
+
+   const handleAddItemToPlayer = (itemName: string) => {
+     setPlayerCurrentItems((current) => {
+       // Prevent adding duplicate items
+       if (current.includes(itemName)) {
+         return current
+       }
+       return [...current, itemName]
+     })
+   }
+
+  const handleRemoveChampionItem = (champName: string, slotIndex: number) => {
+    setAllChampionItems((current) => {
+      const champSlots = [...(current[champName] ?? Array(6).fill(null))]
+      champSlots[slotIndex] = null
+      return {
+        ...current,
+        [champName]: champSlots,
+      }
+    })
+  }
+
+
   const noLiveGameMessage =
     liveGameMessage ||
     (isRiotConnected && !liveGameSummary ? 'Waiting for live game data.' : null)
+  const isLoggedIn = Boolean(username)
+  const shouldShowNoRiotPanel = isLoggedIn && !isRiotConnected
   const shouldShowMiddleSkeleton =
-    !isRiotConnected || isConnecting || isEditingRiotProfile
-  const shouldUseMockData = !isRiotConnected
+    isLoggedIn && isRiotConnected && (isConnecting || isEditingRiotProfile)
   const activeRecommendation = getRecommendationFromLiveSummary(
     liveGameSummary,
     recommendation,
   )
-  const visibleTeams = getTeamsFromLiveSummary(liveGameSummary, shouldUseMockData)
   const engineRecommendations = recommendItems(
     activeRecommendation.champion,
     getEnemyChampionNames(liveGameSummary, visibleTeams, shouldUseMockData),
@@ -362,7 +435,14 @@ export function DashboardScreen() {
 
   return (
     <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(8,145,178,0.16),_transparent_28%),radial-gradient(circle_at_top_right,_rgba(168,85,247,0.14),_transparent_26%),linear-gradient(180deg,_#020617_0%,_#0f172a_45%,_#020617_100%)] px-4 py-4 text-white sm:px-6 lg:px-6">
-      <div className="mx-auto grid max-w-[1840px] gap-6 xl:grid-cols-[300px_minmax(0,1fr)_440px]">
+      <div
+        className="mx-auto grid max-w-[1840px] gap-6 xl:grid-cols-[var(--sidebar-width)_minmax(0,1fr)_440px]"
+        style={
+          {
+            '--sidebar-width': isSidebarCollapsed ? '96px' : '300px',
+          } as CSSProperties
+        }
+      >
         <Sidebar
           activeTab={activeTab}
           authMode={authMode}
@@ -375,6 +455,8 @@ export function DashboardScreen() {
           isRiotConnected={isRiotConnected}
           isEditingRiotProfile={isEditingRiotProfile}
           username={username}
+          isCollapsed={isSidebarCollapsed}
+          onToggleCollapse={() => setIsSidebarCollapsed((current) => !current)}
           onAuthModeChange={setAuthMode}
           onTabChange={setActiveTab}
           onEmailChange={setEmail}
@@ -388,11 +470,13 @@ export function DashboardScreen() {
           onLogout={handleLogout}
         />
 
-        <main className="space-y-6">
-          {activeTab === 'items' ? (
-            <ItemsScreen />
+        <main className={`space-y-6 ${!isLoggedIn ? 'xl:col-span-2' : ''}`}>
+          {!isLoggedIn ? (
+            <WelcomePanel onGetStartedLabel="Log in to get started" />
           ) : activeTab === 'history' ? (
             <MatchHistoryPanel entries={mockHistory} />
+          ) : shouldShowNoRiotPanel ? (
+            <NoRiotAccountPanel />
           ) : shouldShowMiddleSkeleton ? (
             <MiddleSkeleton />
           ) : (
@@ -401,7 +485,7 @@ export function DashboardScreen() {
                 <NoLiveGamePanel message={noLiveGameMessage} />
               ) : (
                 <>
-                  <div className="grid gap-6 xl:grid-cols-2">
+                  <div className="grid gap-6 min-[1900px]:grid-cols-2">
                     <div className="space-y-6">
                       <MatchStatusCard
                         mode={liveGameSummary?.game?.gameMode ?? liveMatch.mode}
@@ -411,24 +495,54 @@ export function DashboardScreen() {
                             liveGameSummary?.game?.gameLengthSeconds,
                         )}
                       />
-                      {visibleTeams[0] && <TeamPanel team={visibleTeams[0]} />}
+                      {visibleTeams[0] && <TeamPanel team={visibleTeams[0]} champItemsMap={allChampionItems} onRemoveItem={handleRemoveChampionItem} />}
                     </div>
-                    {visibleTeams[1] && <TeamPanel team={visibleTeams[1]} />}
+                    {visibleTeams[1] && <TeamPanel team={visibleTeams[1]} champItemsMap={allChampionItems} onRemoveItem={handleRemoveChampionItem} />}
                   </div>
                 </>
               )}
               {!noLiveGameMessage && (
-                <RecommendedBuild recommendation={displayedRecommendation} />
+                <RecommendedBuild
+                  recommendation={displayedRecommendation}
+                  playerCurrentItems={playerCurrentItems}
+                  onAddItem={handleAddItemToPlayer}
+                />
               )}
             </>
           )}
         </main>
 
-        <aside className="relative overflow-hidden rounded-[28px] border border-white/10 bg-slate-950/75 p-5 shadow-[0_0_0_1px_rgba(255,255,255,0.03),0_30px_80px_rgba(3,7,18,0.7)] backdrop-blur-xl xl:sticky xl:top-6 xl:h-[calc(100vh-3rem)]">
-          <div className="absolute inset-x-0 top-0 h-40 bg-[radial-gradient(circle_at_top,_rgba(34,211,238,0.24),_transparent_65%)]" />
-          <div className="absolute -left-10 top-24 h-28 w-28 rounded-full bg-fuchsia-500/20 blur-3xl" />
+        {isLoggedIn ? (
+          <aside className="relative overflow-hidden rounded-[28px] border border-white/10 bg-slate-950/75 p-5 shadow-[0_0_0_1px_rgba(255,255,255,0.03),0_30px_80px_rgba(3,7,18,0.7)] backdrop-blur-xl xl:sticky xl:top-6 xl:h-[calc(100vh-3rem)]">
+            <div className="absolute inset-x-0 top-0 h-40 bg-[radial-gradient(circle_at_top,_rgba(34,211,238,0.24),_transparent_65%)]" />
+            <div className="absolute -left-10 top-24 h-28 w-28 rounded-full bg-fuchsia-500/20 blur-3xl" />
 
           <div className="relative">
+            <div className="mb-5 rounded-[28px] border border-white/8 bg-white/[0.04] p-4">
+              <div className="mb-3 text-xs uppercase tracking-[0.18em] text-slate-400">
+                Voice input
+              </div>
+              <PushToTalkButton onResult={handleVoiceResult} />
+              {(voiceTranscript || voiceParsedResponse) && (
+                <div className="mt-4 space-y-2 rounded-2xl border border-white/8 bg-slate-950/60 p-3 text-sm text-slate-200">
+                  {voiceTranscript ? (
+                    <div>
+                      <span className="text-slate-400">Transcript: </span>
+                      {voiceTranscript}
+                    </div>
+                  ) : null}
+                  {voiceParsedResponse ? (
+                    <div className="text-slate-300">
+                      <span className="text-slate-400">Intent: </span>
+                      {voiceParsedResponse.intent}
+                      {voiceParsedResponse.champion ? (
+                        <span className="ml-2 text-cyan-300">• {voiceParsedResponse.champion}</span>
+                      ) : null}
+                    </div>
+                  ) : null}
+                </div>
+              )}
+            </div>
             <ChatSection
               messages={messages}
               pendingMessage={pendingMessage}
@@ -438,647 +552,8 @@ export function DashboardScreen() {
               onSendMessage={handleSendMessage}
             />
           </div>
-        </aside>
+        </aside> ) : null }
       </div>
     </div>
   )
-}
-
-function getRecommendationFromEngine(
-  fallback: Recommendation,
-  engineRecommendations: ItemRecommendation[],
-): Recommendation {
-  if (!engineRecommendations.length) {
-    return fallback
-  }
-
-  const recommendedItems = engineRecommendations.map(
-    (recommendationItem) => recommendationItem.item,
-  )
-  const reasons = engineRecommendations.flatMap(
-    (recommendationItem) => recommendationItem.reasons,
-  )
-
-  return {
-    ...fallback,
-    nextItems: recommendedItems.slice(0, 3),
-    buildPath: recommendedItems,
-    alternatives: engineRecommendations
-      .slice(3)
-      .map(
-        (recommendationItem) =>
-          `${recommendationItem.item} (${recommendationItem.score})`,
-      ),
-    reasoning: [...new Set(reasons)].slice(0, 3),
-    winRateNote: 'Offline semantic recommendation based on enemy champions',
-  }
-}
-
-function getEnemyChampionNames(
-  summary: LiveGameSummary | null,
-  visibleTeams: Team[],
-  useMockFallback: boolean,
-) {
-  if (summary?.enemyTeam?.length) {
-    return summary.enemyTeam.map(getParticipantChampionName)
-  }
-
-  const participants = getLiveParticipants(summary)
-  const connectedTeamId = getConnectedTeamId(summary)
-
-  if (participants.length && connectedTeamId) {
-    return participants
-      .filter((participant) => getTeamId(participant) !== connectedTeamId)
-      .map(getParticipantChampionName)
-  }
-
-  if (useMockFallback) {
-    return teams[1]?.players.map((player) => player.champion) ?? []
-  }
-
-  return visibleTeams[1]?.players.map((player) => player.champion) ?? []
-}
-
-function getConnectedTeamId(summary: LiveGameSummary | null) {
-  const connectedParticipant = summary?.connectedParticipant
-
-  if (connectedParticipant) {
-    return getTeamId(connectedParticipant)
-  }
-
-  const playerPuuid = summary?.playerPuuid
-  const playerSummonerName = summary?.playerSummonerName
-
-  return getLiveParticipants(summary)
-    .filter(
-      (participant) =>
-        participant.puuid === playerPuuid ||
-        participant.summonerName === playerSummonerName,
-    )
-    .map(getTeamId)
-    .find((teamId): teamId is number => typeof teamId === 'number')
-}
-
-function getParticipantChampionName(participant: LiveGameParticipant) {
-  return (
-    participant.championName ||
-    getStringField(participant, 'champion') ||
-    formatChampionId(participant.championId ?? getChampionKey(participant))
-  )
-}
-
-function formatGameDuration(gameLengthSeconds?: number) {
-  if (typeof gameLengthSeconds !== 'number') {
-    return liveMatch.duration
-  }
-
-  const minutes = Math.floor(gameLengthSeconds / 60)
-  const seconds = gameLengthSeconds % 60
-
-  return `${minutes}:${seconds.toString().padStart(2, '0')}`
-}
-
-function NoLiveGamePanel({ message }: { message: string }) {
-  return (
-    <section className="flex min-h-[calc(100vh-3rem)] flex-col items-center justify-center rounded-[28px] border border-white/10 bg-slate-950/75 px-4 py-6 text-center">
-      <p className="text-[10px] uppercase tracking-[0.22em] text-slate-500">
-        Live game
-      </p>
-      <h3 className="mt-2 text-lg font-semibold text-white">
-        No current game yet
-      </h3>
-      <p className="mt-2 text-sm text-slate-400">{message}</p>
-    </section>
-  )
-}
-
-function MatchHistoryPanel({
-  entries,
-}: {
-  entries: ReadonlyArray<{
-    id: number
-    result: 'Win' | 'Loss'
-    queue: string
-    duration: string
-    champion: string
-    kda: string
-    role: string
-  }>
-}) {
-  return (
-    <section className="rounded-[30px] border border-white/10 bg-slate-950/75 p-5 shadow-[0_20px_70px_rgba(8,15,35,0.35)]">
-      <div className="flex items-center justify-between">
-        <div>
-          <p className="text-xs uppercase tracking-[0.2em] text-cyan-300/80">
-            Match history
-          </p>
-          <h3 className="mt-1 text-xl font-semibold text-white">
-            Recent results
-          </h3>
-        </div>
-        <div className="rounded-full bg-white/[0.06] px-3 py-1 text-xs text-slate-300">
-          {entries.length} matches
-        </div>
-      </div>
-
-      <div className="mt-5 space-y-3">
-        {entries.map((entry) => (
-          <div
-            key={entry.id}
-            className="flex flex-col gap-2 rounded-[22px] border border-white/10 bg-white/[0.04] px-4 py-3"
-          >
-            <div
-              className={`rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] ${
-                entry.result === 'Win'
-                  ? 'bg-emerald-400/15 text-emerald-200'
-                  : 'bg-rose-500/15 text-rose-200'
-              }`}
-            >
-              {entry.result}
-            </div>
-            <div className="text-sm text-slate-200">{entry.queue}</div>
-            <div className="text-sm text-slate-400">{entry.duration}</div>
-            <div className="flex flex-wrap items-center gap-3">
-              <div className="text-sm font-semibold text-white">
-                {entry.champion}
-              </div>
-              <div className="rounded-full bg-white/[0.06] px-3 py-1 text-xs text-slate-300">
-                {entry.role}
-              </div>
-              <div className="text-sm text-slate-300">{entry.kda}</div>
-            </div>
-          </div>
-        ))}
-      </div>
-    </section>
-  )
-}
-
-function MiddleSkeleton() {
-  return (
-    <div className="flex min-h-[calc(100vh-3rem)] flex-col gap-6">
-      <div className="grid gap-6 xl:grid-cols-2">
-        <div className="space-y-6">
-          <SkeletonCard className="h-20" />
-          <SkeletonCard className="h-[280px]" />
-        </div>
-        <SkeletonCard className="h-full" />
-      </div>
-      <SkeletonCard className="flex-1" />
-    </div>
-  )
-}
-
-function SkeletonCard({ className }: { className: string }) {
-  return (
-    <div
-      className={`animate-pulse rounded-[28px] border border-white/10 bg-white/[0.04] ${className}`}
-    >
-      <div className="h-full w-full rounded-[28px] bg-[linear-gradient(110deg,rgba(255,255,255,0.04),rgba(255,255,255,0.09),rgba(255,255,255,0.04))]" />
-    </div>
-  )
-}
-
-function getTeamsFromLiveSummary(
-  summary: LiveGameSummary | null,
-  useMockFallback: boolean,
-): Team[] {
-  const participants = getLiveParticipants(summary)
-
-  if (!participants.length) {
-    return useMockFallback ? teams : []
-  }
-
-  const connectedParticipant = getConnectedParticipant(summary, participants)
-  const connectedTeamId = normalizeTeamId(connectedParticipant?.teamId)
-
-  let myTeamParticipants = summary?.myTeam ?? []
-  let enemyTeamParticipants = summary?.enemyTeam ?? []
-
-  if (!myTeamParticipants.length && !enemyTeamParticipants.length) {
-    if (connectedTeamId) {
-      myTeamParticipants = participants.filter(
-        (participant) => normalizeTeamId(participant.teamId) === connectedTeamId,
-      )
-      enemyTeamParticipants = participants.filter(
-        (participant) =>
-          normalizeTeamId(participant.teamId) &&
-          normalizeTeamId(participant.teamId) !== connectedTeamId,
-      )
-    } else {
-      myTeamParticipants = participants.slice(0, 5)
-      enemyTeamParticipants = participants.slice(5, 10)
-    }
-  } else if (connectedTeamId) {
-    const myTeamId = normalizeTeamId(myTeamParticipants[0]?.teamId)
-    const enemyTeamId = normalizeTeamId(enemyTeamParticipants[0]?.teamId)
-
-    if (myTeamId !== connectedTeamId && enemyTeamId === connectedTeamId) {
-      const temp = myTeamParticipants
-      myTeamParticipants = enemyTeamParticipants
-      enemyTeamParticipants = temp
-    }
-  }
-
-  const myTeamId =
-    connectedTeamId ?? normalizeTeamId(myTeamParticipants[0]?.teamId)
-  const enemyTeamId = normalizeTeamId(enemyTeamParticipants[0]?.teamId)
-
-  const myTeamSide = teamSideFromId(myTeamId)
-  const enemyTeamSide = teamSideFromId(enemyTeamId)
-
-  const myTeamCandidates = myTeamParticipants.filter(
-    (participant) =>
-      !matchesConnectedParticipant(participant, connectedParticipant, summary),
-  )
-
-  const myTeamPlayers = (myTeamCandidates.length
-    ? myTeamCandidates
-    : myTeamParticipants
-  )
-    .slice(0, 4)
-    .map((participant, index) =>
-      mapParticipantToPlayer(
-        participant,
-        index,
-        myTeamSide === 'red'
-          ? 'from-rose-500 to-red-500'
-          : 'from-cyan-400 to-blue-500',
-      ),
-    )
-
-  const enemyTeamPlayers = (enemyTeamParticipants.length
-    ? enemyTeamParticipants
-    : participants
-        .filter(
-          (participant) =>
-            normalizeTeamId(participant.teamId) !== myTeamId,
-        )
-        .slice(0, 5)
-  ).map((participant, index) =>
-    mapParticipantToPlayer(
-      participant,
-      index,
-      enemyTeamSide === 'red'
-        ? 'from-rose-500 to-red-500'
-        : 'from-cyan-400 to-blue-500',
-    ),
-  )
-
-  return [
-    {
-      name: teamNameFromId(myTeamId) || 'Blue Team',
-      side: myTeamSide,
-      players: myTeamPlayers,
-    },
-    {
-      name: teamNameFromId(enemyTeamId) || 'Red Team',
-      side: enemyTeamSide,
-      players: enemyTeamPlayers,
-    },
-  ]
-}
-
-function getLiveGameDataFromMessage(message: { type: string; data?: unknown }) {
-  if (!message.data || typeof message.data !== 'object') {
-    return undefined
-  }
-
-  const data = message.data as LiveGameSummary
-
-  if (
-    message.type === 'summary' ||
-    message.type === 'live-game-summary' ||
-    Array.isArray(data.myTeam) ||
-    Array.isArray(data.enemyTeam) ||
-    Array.isArray(data.participants)
-  ) {
-    return data
-  }
-
-  return undefined
-}
-
-function mapParticipantToPlayer(
-  participant: LiveGameParticipant,
-  index: number,
-  accent: string,
-): Player {
-  const summonerName =
-    participant.riotId ||
-    participant.summonerName ||
-    getStringField(participant, 'gameName') ||
-    `Player ${index + 1}`
-  const champion =
-    participant.championName ||
-    getStringField(participant, 'champion') ||
-    formatChampionId(participant.championId ?? getChampionKey(participant))
-  const currentItems =
-    getStringArrayField(participant, 'currentItems') ||
-    getStringArrayField(participant, 'items') ||
-    getStringArrayField(participant, 'itemIds') ||
-    []
-  const predictedItems =
-    getStringArrayField(participant, 'predictedItems') ||
-    getStringArrayField(participant, 'recommendedItems') ||
-    []
-
-  return {
-    champion,
-    championImage: getChampionImageUrl(
-      participant.championImage || getStringField(participant, 'image'),
-    ),
-    summonerName,
-    currentItems,
-    predictedItems,
-    level: participant.level ?? getNumberField(participant, 'champLevel') ?? 0,
-    role: participant.role ?? 'Unknown',
-    kda: participant.kda ?? formatKda(participant),
-    accent,
-  }
-}
-
-function getRecommendationFromLiveSummary(
-  summary: LiveGameSummary | null,
-  fallback: Recommendation,
-): Recommendation {
-  const connectedParticipant = summary?.connectedParticipant
-  const playerSummonerName = summary?.playerSummonerName
-
-  if (playerSummonerName) {
-    const connectedFromTeams = [
-      ...(summary?.myTeam ?? []),
-      ...(summary?.enemyTeam ?? []),
-    ].find(
-      (participant) =>
-        participant.puuid === summary?.playerPuuid ||
-        participant.summonerName === playerSummonerName,
-    )
-
-    return {
-      ...fallback,
-      champion: connectedFromTeams
-        ? connectedFromTeams.championName ||
-          formatChampionId(
-            connectedFromTeams.championId ?? getChampionKey(connectedFromTeams),
-          )
-        : fallback.champion,
-      championImage: connectedFromTeams
-        ? getChampionImageUrl(
-            connectedFromTeams.championImage ||
-              getStringField(connectedFromTeams, 'image'),
-          )
-        : fallback.championImage,
-      summonerName: playerSummonerName,
-    }
-  }
-
-  if (!connectedParticipant) {
-    return fallback
-  }
-
-  return {
-    ...fallback,
-    champion:
-      connectedParticipant.championName ||
-      getStringField(connectedParticipant, 'champion') ||
-      formatChampionId(connectedParticipant.championId),
-    championImage: getChampionImageUrl(
-      connectedParticipant.championImage ||
-        getStringField(connectedParticipant, 'image'),
-    ),
-    summonerName:
-      connectedParticipant.riotId ||
-      connectedParticipant.summonerName ||
-      fallback.summonerName,
-  }
-}
-
-function getStringField(source: Record<string, unknown>, key: string) {
-  const value = source[key]
-
-  return typeof value === 'string' ? value : undefined
-}
-
-function getStringArrayField(source: Record<string, unknown>, key: string) {
-  const value = source[key]
-
-  if (!Array.isArray(value)) {
-    return undefined
-  }
-
-  return value
-    .map((item) => {
-      if (typeof item === 'string' || typeof item === 'number') {
-        return String(item)
-      }
-
-      if (item && typeof item === 'object') {
-        const itemRecord = item as Record<string, unknown>
-
-        return (
-          getStringField(itemRecord, 'name') ||
-          getStringField(itemRecord, 'itemName') ||
-          getStringField(itemRecord, 'itemId')
-        )
-      }
-
-      return undefined
-    })
-    .filter((item): item is string => Boolean(item))
-}
-
-function formatChampionId(championId?: number) {
-  return typeof championId === 'number' ? `Champion ${championId}` : 'Unknown'
-}
-
-function getChampionKey(participant: LiveGameParticipant) {
-  if (!participant.championKey) {
-    return undefined
-  }
-
-  const championKey = Number(participant.championKey)
-
-  return Number.isNaN(championKey) ? undefined : championKey
-}
-
-function getLiveParticipants(summary: LiveGameSummary | null) {
-  if (summary?.participants?.length) {
-    return summary.participants
-  }
-
-  const teamParticipants = [
-    ...(summary?.myTeam ?? []),
-    ...(summary?.enemyTeam ?? []),
-  ]
-
-  if (teamParticipants.length) {
-    return teamParticipants
-  }
-
-  const game = summary?.game as Record<string, unknown> | undefined
-  const gameParticipants = game?.participants
-
-  return Array.isArray(gameParticipants)
-    ? (gameParticipants as LiveGameParticipant[])
-    : []
-}
-
-function getTeamId(participant: LiveGameParticipant) {
-  const teamId = participant.teamId
-
-  if (typeof teamId === 'number') {
-    return teamId
-  }
-
-  if (typeof teamId === 'string') {
-    return Number(teamId)
-  }
-
-  return undefined
-}
-
-function normalizeTeamId(teamId: LiveGameParticipant['teamId']) {
-  if (typeof teamId === 'number') {
-    return teamId
-  }
-
-  if (typeof teamId === 'string') {
-    const parsed = Number(teamId)
-
-    return Number.isNaN(parsed) ? undefined : parsed
-  }
-
-  return undefined
-}
-
-function teamSideFromId(teamId?: number): Team['side'] {
-  return teamId === 200 ? 'red' : 'blue'
-}
-
-function teamNameFromId(teamId?: number) {
-  if (teamId === 100) {
-    return 'Blue Team'
-  }
-
-  if (teamId === 200) {
-    return 'Red Team'
-  }
-
-  return undefined
-}
-
-function getConnectedParticipant(
-  summary: LiveGameSummary | null,
-  participants: LiveGameParticipant[],
-) {
-  if (summary?.connectedParticipant) {
-    return summary.connectedParticipant
-  }
-
-  const playerSummonerName = summary?.playerSummonerName
-  const playerPuuid = summary?.playerPuuid
-
-  return participants.find((participant) => {
-    if (playerPuuid && getStringField(participant, 'puuid') === playerPuuid) {
-      return true
-    }
-
-    if (!playerSummonerName) {
-      return false
-    }
-
-    const participantName =
-      participant.riotId ||
-      participant.summonerName ||
-      getStringField(participant, 'gameName')
-
-    return participantName === playerSummonerName
-  })
-}
-
-function matchesConnectedParticipant(
-  participant: LiveGameParticipant,
-  connectedParticipant: LiveGameParticipant | undefined,
-  summary: LiveGameSummary | null,
-) {
-  if (!connectedParticipant && !summary?.playerSummonerName) {
-    return false
-  }
-
-  const participantName =
-    participant.riotId ||
-    participant.summonerName ||
-    getStringField(participant, 'gameName')
-
-  const connectedName = connectedParticipant
-    ? connectedParticipant.riotId || connectedParticipant.summonerName
-    : summary?.playerSummonerName
-
-  if (connectedName && participantName && connectedName === participantName) {
-    return true
-  }
-
-  const connectedPuuid =
-    getStringField(connectedParticipant as LiveGameParticipant, 'puuid') ||
-    summary?.playerPuuid
-
-  if (connectedPuuid && getStringField(participant, 'puuid') === connectedPuuid) {
-    return true
-  }
-
-  return false
-}
-
-function getNumberField(source: Record<string, unknown>, key: string) {
-  const value = source[key]
-
-  if (typeof value === 'number') {
-    return value
-  }
-
-  if (typeof value === 'string' && value.trim()) {
-    const parsed = Number(value)
-
-    return Number.isNaN(parsed) ? undefined : parsed
-  }
-
-  return undefined
-}
-
-function formatKda(participant: LiveGameParticipant) {
-  const kills = getNumberField(participant, 'kills')
-  const deaths = getNumberField(participant, 'deaths')
-  const assists = getNumberField(participant, 'assists')
-
-  if (
-    typeof kills === 'number' &&
-    typeof deaths === 'number' &&
-    typeof assists === 'number'
-  ) {
-    return `${kills} / ${deaths} / ${assists}`
-  }
-
-  return '- / - / -'
-}
-
-function getChampionImageUrl(championImage?: string) {
-  if (!championImage) {
-    return undefined
-  }
-
-  if (/^https?:\/\//i.test(championImage)) {
-    return championImage
-  }
-
-  if (championImage.startsWith('/')) {
-    const viteEnv = (import.meta as unknown as {
-      env?: { VITE_API_URL?: string }
-    }).env
-    const apiUrl = viteEnv?.VITE_API_URL || 'http://localhost:3000'
-
-    return new URL(championImage, apiUrl).toString()
-  }
-
-  return championImage
 }
