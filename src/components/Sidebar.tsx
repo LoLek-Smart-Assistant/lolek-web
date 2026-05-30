@@ -6,7 +6,7 @@ import { RiotConnectPanel } from './RiotConnectPanel'
 import { LolekIcon } from './LolekIcon'
 
 type SidebarProps = {
-  activeTab: 'dashboard' | 'history'
+  activeTab: 'dashboard' | 'history' | 'items'
   authMode: 'login' | 'register'
   email: string
   password: string
@@ -18,7 +18,7 @@ type SidebarProps = {
   isEditingRiotProfile: boolean
   username?: string | null
   onAuthModeChange: (mode: 'login' | 'register') => void
-  onTabChange: (tab: 'dashboard' | 'history') => void
+  onTabChange: (tab: 'dashboard' | 'history' | 'items') => void
   onEmailChange: (value: string) => void
   onPasswordChange: (value: string) => void
   onRiotIdChange: (value: string) => void
@@ -137,6 +137,17 @@ export function Sidebar({
               }`}
             >
               History
+            </button>
+            <button
+              type="button"
+              onClick={() => onTabChange('items')}
+              className={`rounded-xl px-3 py-2 text-xs font-semibold uppercase tracking-[0.18em] transition ${
+                activeTab === 'items'
+                  ? 'bg-white/10 text-white'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              Items
             </button>
           </div>
         ) : null}

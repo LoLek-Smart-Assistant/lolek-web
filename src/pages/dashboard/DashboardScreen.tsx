@@ -5,6 +5,7 @@ import { MatchStatusCard } from '../../components/MatchStatusCard'
 import { RecommendedBuild } from '../../components/RecommendedBuild'
 import { Sidebar } from '../../components/Sidebar'
 import { TeamPanel } from '../../components/TeamPanel'
+import { ItemsScreen } from './ItemsScreen'
 import {
   initialChat,
   liveMatch,
@@ -25,7 +26,7 @@ import {
 import userService from '../../services/userService'
 
 export function DashboardScreen() {
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'history'>(
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'history' | 'items'>(
     'dashboard',
   )
   const [authMode, setAuthMode] = useState<'login' | 'register'>('login')
@@ -388,7 +389,9 @@ export function DashboardScreen() {
         />
 
         <main className="space-y-6">
-          {activeTab === 'history' ? (
+          {activeTab === 'items' ? (
+            <ItemsScreen />
+          ) : activeTab === 'history' ? (
             <MatchHistoryPanel entries={mockHistory} />
           ) : shouldShowMiddleSkeleton ? (
             <MiddleSkeleton />

@@ -1,5 +1,5 @@
 import { motion } from 'framer-motion'
-import { Clock3, MapPinned, Sword } from 'lucide-react'
+import { Clock3, Sword } from 'lucide-react'
 
 type MatchStatusCardProps = {
   mode: string
