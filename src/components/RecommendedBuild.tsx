@@ -260,11 +260,11 @@ function RecommendedItemTile({
             src={image}
             alt={item}
             className={`h-full w-full rounded-lg object-cover transition-all ${
-              isAdded ? 'opacity-100 blur-0' : 'opacity-90 blur-[1px]'
+              isAdded ? 'opacity-100' : 'opacity-90'
             }`}
           />
         ) : item ? (
-          <span className={isAdded ? '' : 'opacity-85 blur-[0.6px]'}>
+          <span className={isAdded ? '' : 'opacity-85'}>
             {itemCode}
           </span>
         ) : (

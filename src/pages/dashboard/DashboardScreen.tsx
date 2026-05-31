@@ -11,7 +11,6 @@ import { RecommendedBuild, buildFeaturedItems } from '../../components/Recommend
 import PushToTalkButton from '../../components/PushToTalkButton'
 import { Sidebar } from '../../components/Sidebar'
 import { TeamPanel } from '../../components/TeamPanel'
-import { mockHistory } from '../../data/mockHistory'
 import {
   formatGameDuration,
   getEnemyChampionNames,
@@ -96,6 +95,7 @@ export function DashboardScreen() {
   const [voiceParsedResponse, setVoiceParsedResponse] = useState<ParsedVoiceResponse | null>(null)
   const [username, setUsername] = useState<string | null>(null)
   const [, setIsInitializing] = useState(true)
+  const [isHistoryLoading, setIsHistoryLoading] = useState(false)
   const [liveGameSummary, setLiveGameSummary] = useState<LiveGameSummary | null>(
     null,
   )
@@ -103,7 +103,7 @@ export function DashboardScreen() {
   const [durationSeconds, setDurationSeconds] = useState<number | undefined>(
     undefined,
   )
-  const [historyEntries, setHistoryEntries] = useState<HistoryEntry[]>([...mockHistory])
+  const [historyEntries, setHistoryEntries] = useState<HistoryEntry[]>([])
   const [playerCurrentItems] = useState<string[]>([
     'Luden', 'Sorcerer', 'Amplifying',
   ])
@@ -820,6 +820,10 @@ export function DashboardScreen() {
     let cancelled = false
 
     const loadHistory = async () => {
+      if (!cancelled) {
+        setIsHistoryLoading(true)
+      }
+
       try {
         if (!itemService.getCachedItems()) {
           try {
@@ -858,7 +862,11 @@ export function DashboardScreen() {
       } catch (error) {
         console.error('Failed to load played matches:', error)
         if (!cancelled) {
-          setHistoryEntries([...mockHistory] as HistoryEntry[])
+          setHistoryEntries([])
+        }
+      } finally {
+        if (!cancelled) {
+          setIsHistoryLoading(false)
         }
       }
     }
@@ -927,7 +935,7 @@ export function DashboardScreen() {
           ) : (
             <WelcomePanel onGetStartedLabel="Log in to get started" />
           ) : activeTab === 'history' ? (
-            <MatchHistoryPanel entries={historyEntries} />
+            <MatchHistoryPanel entries={historyEntries} isLoading={isHistoryLoading} />
           ) : shouldShowNoRiotPanel ? (
             <NoRiotAccountPanel />
           ) : shouldShowMiddleSkeleton ? (
@@ -1048,7 +1056,7 @@ export function DashboardScreen() {
 
 function mapPlayedMatchesToHistory(matches: PlayedMatchRecord[]): HistoryEntry[] {
   if (!matches.length) {
-    return [...mockHistory] as HistoryEntry[]
+    return []
   }
 
   return matches.slice(0, 20).map((match, index) => {
