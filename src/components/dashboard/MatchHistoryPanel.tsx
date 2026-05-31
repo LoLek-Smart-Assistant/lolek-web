@@ -3,10 +3,16 @@ type MatchHistoryPanelProps = {
     id: number
     result: 'Win' | 'Loss'
     queue: string
+    mode?: string
     duration: string
     champion: string
     kda: string
     role: string
+    level?: number
+    player?: string
+    matchId?: string
+    playedAt?: string
+    team?: string
   }>
 }
 
@@ -42,17 +48,27 @@ export function MatchHistoryPanel({ entries }: MatchHistoryPanelProps) {
             >
               {entry.result}
             </div>
-            <div className="text-sm text-slate-200">{entry.queue}</div>
-            <div className="text-sm text-slate-400">{entry.duration}</div>
+            <div className="text-sm text-slate-200">
+              {entry.queue}{entry.mode ? ` • ${entry.mode}` : ''}
+            </div>
+            <div className="text-sm text-slate-400">
+              {entry.duration}{entry.playedAt ? ` • ${entry.playedAt}` : ''}
+            </div>
             <div className="flex flex-wrap items-center gap-3">
               <div className="text-sm font-semibold text-white">
                 {entry.champion}
               </div>
               <div className="rounded-full bg-white/[0.06] px-3 py-1 text-xs text-slate-300">
-                {entry.role}
+                {entry.role}{typeof entry.level === 'number' ? ` • Lv ${entry.level}` : ''}
               </div>
-              <div className="text-sm text-slate-300">{entry.kda}</div>
+              <div className="text-sm text-slate-300">KDA {entry.kda}</div>
             </div>
+            {entry.player || entry.team ? (
+              <div className="text-xs text-slate-400">
+                {entry.player ?? 'Unknown player'}{entry.team ? ` • ${entry.team}` : ''}
+              </div>
+            ) : null}
+            {entry.matchId ? <div className="text-xs text-slate-500">Match ID: {entry.matchId}</div> : null}
           </div>
         ))}
       </div>

@@ -44,10 +44,16 @@ type HistoryEntry = {
   id: number
   result: 'Win' | 'Loss'
   queue: string
+  mode?: string
   duration: string
   champion: string
   kda: string
   role: string
+  level?: number
+  player?: string
+  matchId?: string
+  playedAt?: string
+  team?: string
 }
 
 
@@ -55,6 +61,7 @@ export function DashboardScreen() {
   const [activeTab, setActiveTab] = useState<'dashboard' | 'history'>(
     'dashboard',
   )
+  const [historyRefreshTick, setHistoryRefreshTick] = useState(0)
   const [surfaceMode, setSurfaceMode] = useState<'live' | 'manual'>('live')
   const [authMode, setAuthMode] = useState<'login' | 'register'>('login')
   const [email, setEmail] = useState('')
@@ -85,7 +92,10 @@ export function DashboardScreen() {
   const [playerCurrentItems] = useState<string[]>([
     'Luden', 'Sorcerer', 'Amplifying',
   ])
-  const [recommendedBuildItems, setRecommendedBuildItems] = useState<(string | null)[]>([])
+  const [recommendedBuildEdits, setRecommendedBuildEdits] = useState<{
+    templateKey: string
+    items: (string | null)[]
+  } | null>(null)
   const [allChampionItems, setAllChampionItems] = useState<Record<string, (string | null)[]>>({})
   const [suggestedItemImageMap, setSuggestedItemImageMap] = useState<Record<string, string>>({})
   const [mayhemResultsByChampion, setMayhemResultsByChampion] = useState<Record<string, MayhemChampionResult>>({})
@@ -329,7 +339,8 @@ export function DashboardScreen() {
   // Calculate visible teams and mock data flag early
   const shouldUseMockData = !isRiotConnected
   const visibleTeams = getTeamsFromLiveSummary(liveGameSummary, shouldUseMockData)
-  const manualTeamTemplates: Team[] = visibleTeams.length ? visibleTeams : []
+  const manualTeamTemplates: Team[] =
+    !shouldUseMockData && visibleTeams.length ? visibleTeams : []
 
   const toItemNameList = (value: unknown): string[] => {
     if (!Array.isArray(value)) return []
@@ -631,10 +642,14 @@ export function DashboardScreen() {
   )
 
   const handleRemoveRecommendedBuildItem = (slotIndex: number) => {
-    setRecommendedBuildItems((current) => {
-      const next = [...current]
+    setRecommendedBuildEdits((current) => {
+      const base =
+        current?.templateKey === recommendedBuildTemplateKey
+          ? current.items
+          : recommendedBuildTemplate
+      const next = [...base]
       next[slotIndex] = null
-      return next
+      return { templateKey: recommendedBuildTemplateKey, items: next }
     })
   }
 
@@ -697,14 +712,11 @@ export function DashboardScreen() {
     [activeMayhemResult, displayedRecommendation],
   )
 
-  const recommendedBuildTemplateKey = useMemo(
-    () => recommendedBuildTemplate.join('|'),
-    [recommendedBuildTemplate],
-  )
-
-  useEffect(() => {
-    setRecommendedBuildItems(recommendedBuildTemplate)
-  }, [recommendedBuildTemplateKey])
+  const recommendedBuildTemplateKey = recommendedBuildTemplate.join('|')
+  const recommendedBuildItems =
+    recommendedBuildEdits?.templateKey === recommendedBuildTemplateKey
+      ? recommendedBuildEdits.items
+      : recommendedBuildTemplate
 
   useEffect(() => {
     let active = true
@@ -747,10 +759,14 @@ export function DashboardScreen() {
         return
       }
 
-      setRecommendedBuildItems((current) => {
-        const next = [...current]
+      setRecommendedBuildEdits((current) => {
+        const base =
+          current?.templateKey === recommendedBuildTemplateKey
+            ? current.items
+            : recommendedBuildTemplate
+        const next = [...base]
         next[addItemModalTarget.slotIndex!] = itemName
-        return next
+        return { templateKey: recommendedBuildTemplateKey, items: next }
       })
     } else if (addItemModalTarget.champName !== undefined && addItemModalTarget.slotIndex !== undefined) {
       setAllChampionItems((current) => {
@@ -762,6 +778,10 @@ export function DashboardScreen() {
     closeAddItemModal()
   }
 
+  const refreshHistory = useCallback(() => {
+    setHistoryRefreshTick((current) => current + 1)
+  }, [])
+
   useEffect(() => {
     if (!isLoggedIn || activeTab !== 'history') {
       return
@@ -771,6 +791,7 @@ export function DashboardScreen() {
 
     const loadHistory = async () => {
       try {
+        await playedMatchService.syncPlayedMatches()
         const response = await playedMatchService.getPlayedMatches()
         if (cancelled) return
         setHistoryEntries(mapPlayedMatchesToHistory(response.data.matches))
@@ -787,7 +808,7 @@ export function DashboardScreen() {
     return () => {
       cancelled = true
     }
-  }, [activeTab, isLoggedIn])
+  }, [activeTab, isLoggedIn, historyRefreshTick])
 
   return (
     <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(8,145,178,0.16),_transparent_28%),radial-gradient(circle_at_top_right,_rgba(168,85,247,0.14),_transparent_26%),linear-gradient(180deg,_#020617_0%,_#0f172a_45%,_#020617_100%)] px-4 py-4 text-white sm:px-6 lg:px-6">
@@ -822,7 +843,12 @@ export function DashboardScreen() {
             setSurfaceMode(mode)
           }}
           onAuthModeChange={setAuthMode}
-          onTabChange={setActiveTab}
+          onTabChange={(tab) => {
+            setActiveTab(tab)
+            if (tab === 'history') {
+              refreshHistory()
+            }
+          }}
           onEmailChange={setEmail}
           onPasswordChange={setPassword}
           onRiotIdChange={handleRiotIdChange}
@@ -909,7 +935,7 @@ export function DashboardScreen() {
                   </>
                 )
               )}
-              {!noLiveGameMessage && (
+              {!noLiveGameMessage && surfaceMode !== 'manual' && (
                 <RecommendedBuild
                   recommendation={displayedRecommendation}
                   coreItems={toItemNames(activeMayhemResult?.coreItems)}
@@ -966,18 +992,38 @@ function mapPlayedMatchesToHistory(matches: PlayedMatchRecord[]): HistoryEntry[]
   }
 
   return matches.slice(0, 20).map((match, index) => {
-    const winningTeam = match.teams.find((team) => team.won) ?? match.teams[0]
-    const firstPlayer = winningTeam?.players[0]
+    const matchRecord = match as PlayedMatchRecord & {
+      didWin?: boolean
+      myTeamId?: string
+    }
+    const myTeam =
+      (matchRecord.myTeamId
+        ? match.teams.find((team) => String(team.teamId) === String(matchRecord.myTeamId))
+        : undefined) ?? match.teams[0]
+    const representativePlayer = myTeam?.players[0]
     const playerCount = match.teams.reduce((total, team) => total + team.players.length, 0)
+    const didWin = typeof matchRecord.didWin === 'boolean' ? matchRecord.didWin : Boolean(myTeam?.won)
 
     return {
       id: index + 1,
-      result: (winningTeam?.won ? 'Win' : 'Loss') as 'Win' | 'Loss',
-      queue: match.queue || match.gameMode,
+      result: (didWin ? 'Win' : 'Loss') as 'Win' | 'Loss',
+      queue: String(match.queue || match.gameMode || 'Unknown'),
+      mode: String(match.gameMode || 'Unknown'),
       duration: formatSeconds(match.durationSeconds),
-      champion: firstPlayer?.championName || winningTeam?.name || 'Custom match',
-      kda: `${playerCount} players`,
-      role: match.source === 'manual' ? 'Manual' : 'Live',
+      champion: representativePlayer?.championName || myTeam?.name || 'Custom match',
+      kda: `${representativePlayer?.kills ?? 0} / ${representativePlayer?.deaths ?? 0} / ${representativePlayer?.assists ?? 0}`,
+      role:
+        representativePlayer?.teamPosition ||
+        representativePlayer?.role ||
+        (match.source === 'manual' ? 'Manual' : 'Live'),
+      level: representativePlayer?.level ?? 0,
+      player:
+        representativePlayer?.riotId ||
+        representativePlayer?.summonerName ||
+        'Unknown player',
+      matchId: match.matchId,
+      playedAt: formatDateTime(match.endedAt || match.createdAt),
+      team: `${playerCount} players • ${myTeam?.name || `Team ${matchRecord.myTeamId ?? ''}`}`,
     }
   })
 }
@@ -986,4 +1032,11 @@ function formatSeconds(durationSeconds: number) {
   const minutes = Math.floor(durationSeconds / 60)
   const seconds = durationSeconds % 60
   return `${minutes}:${seconds.toString().padStart(2, '0')}`
+}
+
+function formatDateTime(value?: string | null) {
+  if (!value) return 'Unknown time'
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return 'Unknown time'
+  return date.toLocaleString()
 }

@@ -68,6 +68,10 @@ export type SavePlayedMatchResponse = {
 }
 
 const playedMatchService = {
+  syncPlayedMatches: () => {
+    return axiosInstance.post('/played-matches')
+  },
+
   savePlayedMatch: (payload: SavePlayedMatchRequest) => {
     return axiosInstance.post<SavePlayedMatchResponse>('/played-matches', payload)
   },
