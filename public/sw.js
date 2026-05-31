@@ -4,6 +4,11 @@ const APP_CACHE = `app-${CACHE_VERSION}`
 const IMAGE_CACHE = `images-${CACHE_VERSION}`
 const API_CACHE = `api-${CACHE_VERSION}`
 const CACHE_PREFIXES = ['static-', 'app-', 'images-', 'api-']
+const PLAYED_MATCH_SYNC_TAG = 'played-match-sync'
+const DRAFT_DB_NAME = 'lolek-match-drafts'
+const QUEUE_STORE_NAME = 'played-match-sync-queue'
+const META_STORE_NAME = 'metadata'
+const PLAYED_MATCH_API_BASE_URL_KEY = 'played-match-api-base-url'
 
 const STATIC_ASSETS = [
     '/',
@@ -118,29 +123,168 @@ self.addEventListener('fetch', (event) => {
     )
 })
 
-self.addEventListener('message', async (event) => {
-    if (event.data?.type !== 'PRECACHE_IMAGES') {
+function openDraftDatabase() {
+    return new Promise((resolve, reject) => {
+        const request = indexedDB.open(DRAFT_DB_NAME)
+        request.onerror = () => reject(request.error)
+        request.onsuccess = () => resolve(request.result)
+    })
+}
+
+async function readQueuedPlayedMatches() {
+    const database = await openDraftDatabase()
+    return new Promise((resolve, reject) => {
+        const transaction = database.transaction(QUEUE_STORE_NAME, 'readonly')
+        const store = transaction.objectStore(QUEUE_STORE_NAME)
+        const request = store.getAll()
+        request.onerror = () => {
+            database.close()
+            reject(request.error)
+        }
+        request.onsuccess = () => {
+            database.close()
+            resolve(request.result || [])
+        }
+    })
+}
+
+async function loadApiBaseUrl() {
+    const database = await openDraftDatabase()
+    return new Promise((resolve, reject) => {
+        const transaction = database.transaction(META_STORE_NAME, 'readonly')
+        const store = transaction.objectStore(META_STORE_NAME)
+        const request = store.get(PLAYED_MATCH_API_BASE_URL_KEY)
+        request.onerror = () => {
+            database.close()
+            reject(request.error)
+        }
+        request.onsuccess = () => {
+            database.close()
+            resolve(request.result?.value || '')
+        }
+    })
+}
+
+async function deleteQueuedPlayedMatch(matchId) {
+    const database = await openDraftDatabase()
+    return new Promise((resolve, reject) => {
+        const transaction = database.transaction(QUEUE_STORE_NAME, 'readwrite')
+        const store = transaction.objectStore(QUEUE_STORE_NAME)
+        const request = store.delete(matchId)
+        request.onerror = () => {
+            database.close()
+            reject(request.error)
+        }
+        request.onsuccess = () => {
+            database.close()
+            resolve()
+        }
+    })
+}
+
+async function markQueuedPlayedMatchFailed(matchId, errorMessage) {
+    const database = await openDraftDatabase()
+    return new Promise((resolve, reject) => {
+        const transaction = database.transaction(QUEUE_STORE_NAME, 'readwrite')
+        const store = transaction.objectStore(QUEUE_STORE_NAME)
+        const getRequest = store.get(matchId)
+        getRequest.onerror = () => {
+            database.close()
+            reject(getRequest.error)
+        }
+        getRequest.onsuccess = () => {
+            const queued = getRequest.result
+            if (!queued) {
+                database.close()
+                resolve()
+                return
+            }
+            queued.attempts = (queued.attempts || 0) + 1
+            queued.lastError = errorMessage || queued.lastError || null
+            const putRequest = store.put(queued)
+            putRequest.onerror = () => {
+                database.close()
+                reject(putRequest.error)
+            }
+            putRequest.onsuccess = () => {
+                database.close()
+                resolve()
+            }
+        }
+    })
+}
+
+async function flushQueuedPlayedMatchesFromSw() {
+    const queuedSaves = await readQueuedPlayedMatches()
+    if (!queuedSaves.length) return 0
+
+    const baseUrlRaw = await loadApiBaseUrl()
+    const baseUrl = typeof baseUrlRaw === 'string' ? baseUrlRaw.replace(/\/$/, '') : ''
+    const endpoint = baseUrl ? `${baseUrl}/played-matches/custom` : '/played-matches/custom'
+    let processed = 0
+
+    for (const queuedSave of queuedSaves) {
+        const { queuedAt, attempts, lastError, ...payload } = queuedSave
+        try {
+            const response = await fetch(endpoint, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                credentials: 'include',
+                body: JSON.stringify(payload),
+            })
+
+            if (!response.ok) {
+                throw new Error(`Unexpected sync response: ${response.status}`)
+            }
+
+            await deleteQueuedPlayedMatch(queuedSave.matchId)
+            processed += 1
+        } catch (error) {
+            const message = error instanceof Error ? error.message : 'Failed to sync played match'
+            await markQueuedPlayedMatchFailed(queuedSave.matchId, message)
+            break
+        }
+    }
+
+    return processed
+}
+
+self.addEventListener('sync', (event) => {
+    if (event.tag !== PLAYED_MATCH_SYNC_TAG) {
         return
     }
 
-    const cache = await caches.open(IMAGE_CACHE)
-    const urls = Array.isArray(event.data.urls) ? event.data.urls : []
+    event.waitUntil(flushQueuedPlayedMatchesFromSw())
+})
 
-    await Promise.allSettled(
-        urls.map(async (url) => {
-            try {
-                const existing = await cache.match(url)
-                if (existing) {
-                    return
-                }
+self.addEventListener('message', async (event) => {
+    if (event.data?.type === 'FLUSH_PLAYED_MATCH_QUEUE') {
+        event.waitUntil(flushQueuedPlayedMatchesFromSw())
+        return
+    }
 
-                const response = await fetch(url)
-                if (response.ok) {
-                    await cache.put(url, response.clone())
+    if (event.data?.type === 'PRECACHE_IMAGES') {
+        const cache = await caches.open(IMAGE_CACHE)
+        const urls = Array.isArray(event.data.urls) ? event.data.urls : []
+
+        await Promise.allSettled(
+            urls.map(async (url) => {
+                try {
+                    const existing = await cache.match(url)
+                    if (existing) {
+                        return
+                    }
+
+                    const response = await fetch(url)
+                    if (response.ok) {
+                        await cache.put(url, response.clone())
+                    }
+                } catch (error) {
+                    console.error(`Failed to precache ${url}:`, error)
                 }
-            } catch (error) {
-                console.error(`Failed to precache ${url}:`, error)
-            }
-        }),
-    )
+            }),
+        )
+    }
 })

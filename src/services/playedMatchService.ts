@@ -76,6 +76,10 @@ const playedMatchService = {
     return axiosInstance.post<SavePlayedMatchResponse>('/played-matches', payload)
   },
 
+  saveCustomPlayedMatch: (payload: SavePlayedMatchRequest) => {
+    return axiosInstance.post<SavePlayedMatchResponse>('/played-matches/custom', payload)
+  },
+
   getPlayedMatches: () => {
     return axiosInstance.get<PlayedMatchesResponse>('/played-matches')
   },

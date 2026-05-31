@@ -11,6 +11,10 @@ import {
 const PLAYED_MATCH_SYNC_TAG = 'played-match-sync'
 let onlineListenerAttached = false
 
+type BackgroundSyncManager = {
+  register: (tag: string) => Promise<void>
+}
+
 function getApiBaseUrl() {
   return (axiosInstance.defaults.baseURL as string | undefined)?.replace(/\/$/, '') ?? ''
 }
@@ -51,7 +55,7 @@ export async function registerPlayedMatchSync() {
   }
 
   const serviceWorkerRegistration = await navigator.serviceWorker.ready
-  const syncManager = (serviceWorkerRegistration as ServiceWorkerRegistration & { sync?: SyncManager }).sync
+  const syncManager = (serviceWorkerRegistration as ServiceWorkerRegistration & { sync?: BackgroundSyncManager }).sync
 
   if (!syncManager?.register) {
     return false
@@ -74,7 +78,7 @@ export async function flushQueuedPlayedMatchSaves() {
     const { queuedAt, attempts, lastError, ...payload } = queuedSave
 
     try {
-      const response = await axiosInstance.post('/played-matches', payload)
+      const response = await axiosInstance.post('/played-matches/custom', payload)
 
       if (response.status < 200 || response.status >= 300) {
         throw new Error(`Unexpected sync response: ${response.status}`)
@@ -95,7 +99,6 @@ export async function flushQueuedPlayedMatchSaves() {
 export async function requestPlayedMatchQueueFlush() {
   if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator && navigator.serviceWorker.controller) {
     navigator.serviceWorker.controller.postMessage({ type: 'FLUSH_PLAYED_MATCH_QUEUE' })
-    return
   }
 
   await flushQueuedPlayedMatchSaves()

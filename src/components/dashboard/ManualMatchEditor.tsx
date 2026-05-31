@@ -94,6 +94,7 @@ type ManualPlayerDraft = {
   summonerName: string
   riotId: string
   championName: string
+  championImage?: string
   role: string
   teamPosition: string
   championId: string
@@ -133,6 +134,7 @@ function createDefaultPlayers(start: number, end: number): ManualPlayerDraft[] {
       summonerName: `Player ${playerNumber}`,
       riotId: '',
       championName: '',
+      championImage: undefined,
       role: '',
       teamPosition: '',
       championId: '',
@@ -219,8 +221,8 @@ async function fetchChampionsFromDDragon(): Promise<ChampionOption[]> {
   }
 }
 
-export function ManualMatchEditor({ onSaved, canSyncToBackend = true, teamTemplates = [] }: ManualMatchEditorProps) {
-  const createDraft = () => createInitialDraft(teamTemplates)
+export function ManualMatchEditor({ onSaved, canSyncToBackend = true }: ManualMatchEditorProps) {
+  const createDraft = () => createInitialDraft()
   const [draft, setDraft] = useState<ManualMatchDraft>(createDraft)
   const [items, setItems] = useState<Item[]>([])
   const [champions, setChampions] = useState<ChampionOption[]>([])
@@ -461,7 +463,7 @@ export function ManualMatchEditor({ onSaved, canSyncToBackend = true, teamTempla
         return
       }
 
-      const response = await playedMatchService.savePlayedMatch(payload)
+      const response = await playedMatchService.saveCustomPlayedMatch(payload)
 
       await deletePlayedMatchDraft(DRAFT_KEY)
       await requestPlayedMatchQueueFlush().catch((error) => {
