@@ -26,6 +26,7 @@ import {
     recommendation,
 } from '../../data/mockRiot'
 import { recommendItems } from '../../engine/recommender'
+import { isAxiosError } from 'axios'
 import authService from '../../services/authService'
 import axiosInstance from '../../config/axiosConfig'
 import mayhemService, { type MayhemChampionResult } from '../../services/mayhemService'
@@ -828,11 +829,18 @@ export function DashboardScreen() {
           }
         }
 
-        try {
-          await playedMatchService.syncPlayedMatches()
-        } catch (error) {
-          // Sync failure should not block reading existing history.
-          console.warn('Played matches sync failed, continuing with existing history:', error)
+        if (isRiotConnected) {
+          try {
+            await playedMatchService.syncPlayedMatches()
+          } catch (error) {
+            // Sync failure should not block reading existing history.
+            // 400 is expected for some account states (e.g. no sync source available).
+            if (isAxiosError(error) && error.response?.status === 400) {
+              console.info('Played matches sync skipped (400):', error.response?.data)
+            } else {
+              console.warn('Played matches sync failed, continuing with existing history:', error)
+            }
+          }
         }
 
         const response = await playedMatchService.getPlayedMatches()
@@ -860,7 +868,7 @@ export function DashboardScreen() {
     return () => {
       cancelled = true
     }
-  }, [activeTab, isLoggedIn, historyRefreshTick])
+  }, [activeTab, isLoggedIn, isRiotConnected, historyRefreshTick])
 
   return (
     <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(8,145,178,0.16),_transparent_28%),radial-gradient(circle_at_top_right,_rgba(168,85,247,0.14),_transparent_26%),linear-gradient(180deg,_#020617_0%,_#0f172a_45%,_#020617_100%)] px-4 py-4 text-white sm:px-6 lg:px-6">
