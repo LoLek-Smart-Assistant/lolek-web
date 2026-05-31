@@ -27,7 +27,7 @@ import { recommendItems } from '../../engine/recommender'
 import authService from '../../services/authService'
 import axiosInstance from '../../config/axiosConfig'
 import mayhemService, { type MayhemChampionResult } from '../../services/mayhemService'
-import itemService from '../../services/itemService'
+import itemService, { precacheImageUrls } from '../../services/itemService'
 import {
   connectLiveGameSummary,
   type LiveGameSummary,
@@ -637,6 +637,15 @@ export function DashboardScreen() {
     liveGameSummary,
     recommendation,
   )
+
+  useEffect(() => {
+    const championImages = visibleTeams.flatMap((team) =>
+      team.players.map((player) => player.championImage),
+    )
+    championImages.push(activeRecommendation.championImage)
+    precacheImageUrls(championImages)
+  }, [visibleTeams, activeRecommendation.championImage])
+
   const activeMayhemResult = mayhemResultsByChampion[normalizeChampionKey(activeRecommendation.champion)]
   const engineRecommendations = recommendItems(
     activeRecommendation.champion,

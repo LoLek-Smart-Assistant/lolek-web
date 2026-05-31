@@ -14,6 +14,11 @@ export function ItemsGallery() {
         const loadedItems = await itemService.fetchItems()
         setItems(loadedItems)
         setError(null)
+
+        window.navigator.serviceWorker.controller?.postMessage({
+          type: 'PRECACHE_IMAGES',
+          urls: loadedItems.map(item => item.image).filter(Boolean)
+        })
       } catch (err) {
         console.error('Failed to load items:', err)
         setError('Failed to load items')

@@ -1,6 +1,6 @@
-const CACHE_NAME = 'worker.js'
+const CACHE_NAME = 'worker-v1'
 
-const ASSETS = [
+const STATIC_ASSETS = [
     '/',
     '/manifest.json',
     '../index.html',
@@ -10,7 +10,7 @@ self.addEventListener('install', (event) => {
     self.skipWaiting()
 
     event.waitUntil(
-        caches.open(STATIC_CACHE).then((cache) => {
+        caches.open(CACHE_NAME).then((cache) => {
             return cache.addAll(STATIC_ASSETS)
         }),
     )
@@ -23,8 +23,7 @@ self.addEventListener('activate', (event) => {
                 keys
                     .filter(
                         (key) =>
-                            key !== CACHE_NAME &&
-                            key !== STATIC_CACHE,
+                            key !== CACHE_NAME,
                     )
                     .map((key) => caches.delete(key)),
             ),
@@ -92,6 +91,33 @@ self.addEventListener('fetch', (event) => {
                 })
 
             return cached || networkFetch
+        }),
+    )
+})
+
+self.addEventListener('message', async (event) => {
+    if (event.data?.type !== 'PRECACHE_IMAGES') {
+        return
+    }
+
+    const cache = await caches.open(CACHE_NAME)
+    const urls = Array.isArray(event.data.urls) ? event.data.urls : []
+
+    await Promise.allSettled(
+        urls.map(async (url) => {
+            try {
+                const existing = await cache.match(url)
+                if (existing) {
+                    return
+                }
+
+                const response = await fetch(url)
+                if (response.ok) {
+                    await cache.put(url, response.clone())
+                }
+            } catch (error) {
+                console.error(`Failed to precache ${url}:`, error)
+            }
         }),
     )
 })

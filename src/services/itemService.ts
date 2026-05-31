@@ -13,6 +13,32 @@ const makeAbsoluteImage = (image?: string | null) => {
   return image.startsWith('/') ? `${base}${image}` : `${base}/${image}`;
 };
 
+export const precacheImageUrls = (urls: Array<string | null | undefined>) => {
+  if (typeof window === 'undefined' || !('serviceWorker' in navigator)) return;
+
+  const uniqueUrls = [...new Set(urls.filter(Boolean))] as string[];
+  if (uniqueUrls.length === 0) return;
+
+  const message = { type: 'PRECACHE_IMAGES', urls: uniqueUrls };
+
+  navigator.serviceWorker.ready
+    .then((registration) => {
+      if (navigator.serviceWorker.controller) {
+        navigator.serviceWorker.controller.postMessage(message);
+        return;
+      }
+
+      registration.active?.postMessage(message);
+    })
+    .catch(() => {
+      // SW not ready; image requests will still be cached lazily via fetch handler.
+    });
+};
+
+const precacheItemImages = (items: Item[]) => {
+  precacheImageUrls(items.map((item) => item.image));
+};
+
 export type ItemService = {
   fetchItems: () => Promise<Item[]>;
   getCachedItems: () => Record<string, Item> | null;
@@ -93,6 +119,7 @@ const itemService: ItemService = {
 
 
     cachedItems = map;
+    precacheItemImages(itemsList);
     return itemsList;
   },
 
@@ -103,4 +130,3 @@ const itemService: ItemService = {
 };
 
 export default itemService;
-
