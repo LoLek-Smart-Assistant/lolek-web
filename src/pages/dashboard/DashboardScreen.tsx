@@ -954,9 +954,9 @@ export function DashboardScreen() {
             <div className="absolute -left-10 top-24 h-28 w-28 rounded-full bg-fuchsia-500/20 blur-3xl" />
 
           <div className="relative">
-            <div className="rounded-[28px] border border-white/8 bg-white/[0.04] p-4">
-              <div className="mb-3 text-xs uppercase tracking-[0.18em] text-slate-400">
-                Voice input
+            <div className="p-3">
+              <div className="mb-3 text-xs text-center uppercase tracking-[0.18em] text-slate-400">
+                Chat with LoLek
               </div>
               <PushToTalkButton onResult={handleVoiceResult} />
               {(voiceTranscript || voiceParsedResponse) && (
