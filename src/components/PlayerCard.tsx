@@ -118,9 +118,9 @@ type ItemIconProps = {
 function ItemIcon({ item, variant, itemImageMap, slotIndex, onRemove }: ItemIconProps) {
   if (!item) {
     return (
-      <div className="mx-auto w-[28px] text-center">
-        <div className="flex aspect-square w-[28px] items-center justify-center rounded-lg border border-white/20 bg-white/[0.02]">
-          <div className="text-[10px] text-slate-500">—</div>
+      <div className="mx-auto w-[45px] text-center">
+        <div className="flex aspect-square w-[45px] items-center justify-center rounded-lg border border-white/20 bg-white/[0.02]">
+          <div className="text-[10px] text-slate-500">{''}</div>
         </div>
       </div>
     )

@@ -1,6 +1,7 @@
-import {type CSSProperties, useCallback, useEffect, useRef, useState} from 'react'
+import { type CSSProperties, useCallback, useEffect, useRef, useState } from 'react'
 
 import { MatchHistoryPanel } from '../../components/dashboard/MatchHistoryPanel'
+import { ManualMatchEditor } from '../../components/dashboard/ManualMatchEditor'
 import { MiddleSkeleton } from '../../components/dashboard/MiddleSkeleton'
 import { NoLiveGamePanel } from '../../components/dashboard/NoLiveGamePanel'
 import { NoRiotAccountPanel } from '../../components/dashboard/NoRiotAccountPanel'
@@ -18,6 +19,7 @@ import {
   getRecommendationFromLiveSummary,
   getTeamsFromLiveSummary,
 } from '../../helpers/dashboardLiveGameHelpers'
+import type { Team } from '../../data/mockRiot'
 import { getRecommendationFromEngine } from '../../helpers/dashboardRecommendationHelpers'
 import {
     liveMatch,
@@ -27,6 +29,7 @@ import { recommendItems } from '../../engine/recommender'
 import authService from '../../services/authService'
 import axiosInstance from '../../config/axiosConfig'
 import mayhemService, { type MayhemChampionResult } from '../../services/mayhemService'
+import playedMatchService, { type PlayedMatchRecord } from '../../services/playedMatchService'
 import itemService, { precacheImageUrls } from '../../services/itemService'
 import {
   connectLiveGameSummary,
@@ -36,11 +39,22 @@ import userService from '../../services/userService'
 import type { MayhemItemEntry as MayhemApiItemEntry } from '../../services/mayhemService'
 import type { ParsedVoiceResponse } from '../../voice/types'
 
+type HistoryEntry = {
+  id: number
+  result: 'Win' | 'Loss'
+  queue: string
+  duration: string
+  champion: string
+  kda: string
+  role: string
+}
+
 
 export function DashboardScreen() {
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'history' | 'items'>(
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'history'>(
     'dashboard',
   )
+  const [surfaceMode, setSurfaceMode] = useState<'live' | 'manual'>('live')
   const [authMode, setAuthMode] = useState<'login' | 'register'>('login')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -66,6 +80,7 @@ export function DashboardScreen() {
   const [durationSeconds, setDurationSeconds] = useState<number | undefined>(
     undefined,
   )
+  const [historyEntries, setHistoryEntries] = useState<HistoryEntry[]>([...mockHistory])
   const [playerCurrentItems, setPlayerCurrentItems] = useState<string[]>([
     'Luden', 'Sorcerer', 'Amplifying',
   ])
@@ -304,6 +319,7 @@ export function DashboardScreen() {
   // Calculate visible teams and mock data flag early
   const shouldUseMockData = !isRiotConnected
   const visibleTeams = getTeamsFromLiveSummary(liveGameSummary, shouldUseMockData)
+  const manualTeamTemplates: Team[] = visibleTeams.length ? visibleTeams : []
 
   const toItemNameList = (value: unknown): string[] => {
     if (!Array.isArray(value)) return []
@@ -663,6 +679,33 @@ export function DashboardScreen() {
     engineRecommendations,
   )
 
+  useEffect(() => {
+    if (!isLoggedIn || activeTab !== 'history') {
+      return
+    }
+
+    let cancelled = false
+
+    const loadHistory = async () => {
+      try {
+        const response = await playedMatchService.getPlayedMatches()
+        if (cancelled) return
+        setHistoryEntries(mapPlayedMatchesToHistory(response.data.matches))
+      } catch (error) {
+        console.error('Failed to load played matches:', error)
+        if (!cancelled) {
+          setHistoryEntries([...mockHistory] as HistoryEntry[])
+        }
+      }
+    }
+
+    void loadHistory()
+
+    return () => {
+      cancelled = true
+    }
+  }, [activeTab, isLoggedIn])
+
   return (
     <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(8,145,178,0.16),_transparent_28%),radial-gradient(circle_at_top_right,_rgba(168,85,247,0.14),_transparent_26%),linear-gradient(180deg,_#020617_0%,_#0f172a_45%,_#020617_100%)] px-4 py-4 text-white sm:px-6 lg:px-6">
       <div
@@ -675,6 +718,7 @@ export function DashboardScreen() {
       >
         <Sidebar
           activeTab={activeTab}
+          surfaceMode={surfaceMode}
           authMode={authMode}
           email={email}
           password={password}
@@ -690,6 +734,10 @@ export function DashboardScreen() {
           username={username}
           isCollapsed={isSidebarCollapsed}
           onToggleCollapse={() => setIsSidebarCollapsed((current) => !current)}
+          onSurfaceModeChange={(mode) => {
+            setActiveTab('dashboard')
+            setSurfaceMode(mode)
+          }}
           onAuthModeChange={setAuthMode}
           onTabChange={setActiveTab}
           onEmailChange={setEmail}
@@ -705,10 +753,12 @@ export function DashboardScreen() {
         />
 
         <main className={`space-y-6 ${!isLoggedIn ? 'xl:col-span-2' : ''}`}>
-          {!isLoggedIn ? (
+          {!isLoggedIn ? surfaceMode === 'manual' ? (
+            <ManualMatchEditor canSyncToBackend={false} teamTemplates={manualTeamTemplates} />
+          ) : (
             <WelcomePanel onGetStartedLabel="Log in to get started" />
           ) : activeTab === 'history' ? (
-            <MatchHistoryPanel entries={mockHistory} />
+            <MatchHistoryPanel entries={historyEntries} />
           ) : shouldShowNoRiotPanel ? (
             <NoRiotAccountPanel />
           ) : shouldShowMiddleSkeleton ? (
@@ -716,24 +766,32 @@ export function DashboardScreen() {
           ) : (
             <>
               {noLiveGameMessage ? (
-                <NoLiveGamePanel message={noLiveGameMessage} />
+                surfaceMode === 'manual' ? (
+                  <ManualMatchEditor onSaved={() => setActiveTab('history')} teamTemplates={manualTeamTemplates} />
+                ) : (
+                  <NoLiveGamePanel message={noLiveGameMessage} />
+                )
               ) : (
-                <>
-                  <div className="grid gap-6 min-[1900px]:grid-cols-2">
-                    <div className="space-y-6">
-                      <MatchStatusCard
-                        mode={liveGameSummary?.game?.gameMode ?? liveMatch.mode}
-                        duration={formatGameDuration(
-                          durationSeconds ??
-                            liveGameSummary?.gameDuration ??
-                            liveGameSummary?.game?.gameLengthSeconds,
-                        )}
-                      />
-                      {visibleTeams[0] && <TeamPanel team={visibleTeams[0]} champItemsMap={allChampionItems} itemImageMap={suggestedItemImageMap} onRemoveItem={handleRemoveChampionItem} />}
+                surfaceMode === 'manual' ? (
+                  <ManualMatchEditor onSaved={() => setActiveTab('history')} teamTemplates={manualTeamTemplates} />
+                ) : (
+                  <>
+                    <div className="grid gap-6 min-[1900px]:grid-cols-2">
+                      <div className="space-y-6">
+                        <MatchStatusCard
+                          mode={liveGameSummary?.game?.gameMode ?? liveMatch.mode}
+                          duration={formatGameDuration(
+                            durationSeconds ??
+                              liveGameSummary?.gameDuration ??
+                              liveGameSummary?.game?.gameLengthSeconds,
+                          )}
+                        />
+                        {visibleTeams[0] && <TeamPanel team={visibleTeams[0]} champItemsMap={allChampionItems} itemImageMap={suggestedItemImageMap} onRemoveItem={handleRemoveChampionItem} />}
+                      </div>
+                      {visibleTeams[1] && <TeamPanel team={visibleTeams[1]} champItemsMap={allChampionItems} itemImageMap={suggestedItemImageMap} onRemoveItem={handleRemoveChampionItem} />}
                     </div>
-                    {visibleTeams[1] && <TeamPanel team={visibleTeams[1]} champItemsMap={allChampionItems} itemImageMap={suggestedItemImageMap} onRemoveItem={handleRemoveChampionItem} />}
-                  </div>
-                </>
+                  </>
+                )
               )}
               {!noLiveGameMessage && (
                 <RecommendedBuild
@@ -783,4 +841,32 @@ export function DashboardScreen() {
       </div>
     </div>
   )
+}
+
+function mapPlayedMatchesToHistory(matches: PlayedMatchRecord[]): HistoryEntry[] {
+  if (!matches.length) {
+    return [...mockHistory] as HistoryEntry[]
+  }
+
+  return matches.slice(0, 20).map((match, index) => {
+    const winningTeam = match.teams.find((team) => team.won) ?? match.teams[0]
+    const firstPlayer = winningTeam?.players[0]
+    const playerCount = match.teams.reduce((total, team) => total + team.players.length, 0)
+
+    return {
+      id: index + 1,
+      result: (winningTeam?.won ? 'Win' : 'Loss') as 'Win' | 'Loss',
+      queue: match.queue || match.gameMode,
+      duration: formatSeconds(match.durationSeconds),
+      champion: firstPlayer?.championName || winningTeam?.name || 'Custom match',
+      kda: `${playerCount} players`,
+      role: match.source === 'manual' ? 'Manual' : 'Live',
+    }
+  })
+}
+
+function formatSeconds(durationSeconds: number) {
+  const minutes = Math.floor(durationSeconds / 60)
+  const seconds = durationSeconds % 60
+  return `${minutes}:${seconds.toString().padStart(2, '0')}`
 }

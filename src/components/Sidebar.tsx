@@ -13,12 +13,13 @@ import {
 } from 'lucide-react'
 import { useState } from 'react'
 import { authService } from '../services'
-import { AuthPanel } from './AuthPanel'
+import { AuthPanel } from './auth/AuthPanel'
 import { RiotConnectPanel } from './RiotConnectPanel'
 import { LolekIcon } from './LolekIcon'
 
 type SidebarProps = {
-  activeTab: 'dashboard' | 'history' | 'items'
+  activeTab: 'dashboard' | 'history'
+  surfaceMode: 'live' | 'manual'
   authMode: 'login' | 'register'
   email: string
   password: string
@@ -34,8 +35,9 @@ type SidebarProps = {
   username?: string | null
   isCollapsed?: boolean
   onToggleCollapse?: () => void
+  onSurfaceModeChange: (mode: 'live' | 'manual') => void
   onAuthModeChange: (mode: 'login' | 'register') => void
-  onTabChange: (tab: 'dashboard' | 'history' | 'items') => void
+  onTabChange: (tab: 'dashboard' | 'history') => void
   onEmailChange: (value: string) => void
   onPasswordChange: (value: string) => void
   onRiotIdChange: (value: string) => void
@@ -50,6 +52,7 @@ type SidebarProps = {
 
 export function Sidebar({
   activeTab,
+  surfaceMode,
   authMode,
   email,
   password,
@@ -65,6 +68,7 @@ export function Sidebar({
   username,
   isCollapsed = false,
   onToggleCollapse,
+  onSurfaceModeChange,
   onAuthModeChange,
   onTabChange,
   onEmailChange,
@@ -157,6 +161,35 @@ export function Sidebar({
           </div>
         </div>
 
+        <div className={`rounded-2xl border border-white/10 bg-white/[0.03] p-1 ${showDetails ? '' : 'mx-auto w-full'}`}>
+          <div className="inline-flex w-full rounded-[20px] p-1">
+            <button
+              type="button"
+              onClick={() => onSurfaceModeChange('live')}
+              className={`flex-1 rounded-full px-4 py-2 text-xs font-semibold uppercase tracking-[0.24em] transition ${
+                surfaceMode === 'live'
+                  ? 'bg-cyan-400/15 text-cyan-100 shadow-[0_0_0_1px_rgba(34,211,238,0.12)]'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+              title="Live"
+            >
+              {showDetails ? 'Live' : 'L'}
+            </button>
+            <button
+              type="button"
+              onClick={() => onSurfaceModeChange('manual')}
+              className={`flex-1 rounded-full px-4 py-2 text-xs font-semibold uppercase tracking-[0.24em] transition ${
+                surfaceMode === 'manual'
+                  ? 'bg-cyan-400/15 text-cyan-100 shadow-[0_0_0_1px_rgba(34,211,238,0.12)]'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+              title="Manual"
+            >
+              {showDetails ? 'Manual' : 'M'}
+            </button>
+          </div>
+        </div>
+
         {isLoggedIn ? (
           <div className={`grid gap-2 rounded-2xl bg-white/[0.03] ${showDetails ? 'p-2' : 'p-1'}`}>
             <button
@@ -188,17 +221,6 @@ export function Sidebar({
             >
               <History className="h-4 w-4" />
               {showDetails ? 'History' : null}
-            </button>
-            <button
-              type="button"
-              onClick={() => onTabChange('items')}
-              className={`rounded-xl px-3 py-2 text-xs font-semibold uppercase tracking-[0.18em] transition ${
-                activeTab === 'items'
-                  ? 'bg-white/10 text-white'
-                  : 'text-slate-400 hover:text-slate-200'
-              }`}
-            >
-              Items
             </button>
           </div>
         ) : null}

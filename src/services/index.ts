@@ -10,6 +10,24 @@ export type { AccountInfo, LiveGameParticipant, LiveGameData } from './summonerS
 export { default as syncService } from './syncService';
 export type { Champion, Item, SyncResponse } from './syncService';
 
+export { default as playedMatchService } from './playedMatchService'
+export type {
+  PlayedMatchItem,
+  PlayedMatchPlayer,
+  PlayedMatchRecord,
+  PlayedMatchSource,
+  PlayedMatchTeam,
+  PlayedMatchesResponse,
+  SavePlayedMatchRequest,
+} from './playedMatchService'
+
+export {
+  createStoredDraft,
+  deletePlayedMatchDraft,
+  loadPlayedMatchDraft,
+  savePlayedMatchDraft,
+} from './matchDraftStorage'
+
 export { connectLiveGameSummary } from './liveGameSummarySocket';
 export type {
   LiveGameSummary,
