@@ -12,6 +12,17 @@ export function useVoiceRecognition(): UseVoiceRecognitionState {
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const chunksRef = useRef<Blob[]>([]);
+  const isRecordingRef = useRef(false);
+  const isLoadingRef = useRef(false);
+  const isStoppingRef = useRef(false);
+
+  useEffect(() => {
+    isRecordingRef.current = isRecording;
+  }, [isRecording]);
+
+  useEffect(() => {
+    isLoadingRef.current = isLoading;
+  }, [isLoading]);
 
   useEffect(() => {
     return () => {
@@ -39,7 +50,9 @@ export function useVoiceRecognition(): UseVoiceRecognitionState {
       return;
     }
 
-    if (isRecording) return;
+    if (isRecordingRef.current || isLoadingRef.current) return;
+
+    isRecordingRef.current = true;
 
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -65,14 +78,23 @@ export function useVoiceRecognition(): UseVoiceRecognitionState {
       recorder.start();
       setIsRecording(true);
     } catch (err: unknown) {
+      isRecordingRef.current = false;
       const message = err instanceof Error ? err.message : String(err);
       setError(message.startsWith('NotAllowedError') ? 'Microphone permission denied' : message);
     }
   }
 
   async function stopRecording(): Promise<void> {
+    if (isStoppingRef.current) {
+      return;
+    }
+
+    isStoppingRef.current = true;
+
     if (!mediaRecorderRef.current) {
       setIsRecording(false);
+      isRecordingRef.current = false;
+      isStoppingRef.current = false;
       return;
     }
 
@@ -113,19 +135,23 @@ export function useVoiceRecognition(): UseVoiceRecognitionState {
     }
 
     setIsRecording(false);
+    isRecordingRef.current = false;
 
     const blob = await stopped;
     if (!blob) {
       setError('No audio data recorded');
+      isStoppingRef.current = false;
       return;
     }
 
     if (blob.size < 500) {
       setError('Recording too short');
+      isStoppingRef.current = false;
       return;
     }
 
     setIsLoading(true);
+    isLoadingRef.current = true;
     setError(null);
     try {
       const res: VoiceResponse = await uploadVoiceAudio(blob);
@@ -142,6 +168,8 @@ export function useVoiceRecognition(): UseVoiceRecognitionState {
       setError(message ?? 'Failed to upload audio');
     } finally {
       setIsLoading(false);
+      isLoadingRef.current = false;
+      isStoppingRef.current = false;
     }
   }
 

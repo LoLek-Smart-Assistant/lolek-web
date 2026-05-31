@@ -1,4 +1,4 @@
-import React, { useCallback, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef } from 'react';
 import useVoiceRecognition from '../voice/useVoiceRecognition';
 import type { ParsedVoiceResponse } from '../voice/types';
 
@@ -11,14 +11,21 @@ export const PushToTalkButton: React.FC<Props> = ({ onResult }) => {
   const { isRecording, isLoading, transcript, parsedResponse, error, startRecording, stopRecording } =
     useVoiceRecognition();
 
-  // local pressed state to handle mouseleave behaviour
-  const [pressed, setPressed] = useState(false);
-
   // Track the last response ID to prevent duplicate onResult calls
   const lastResponseIdRef = useRef<string | null>(null);
 
+  const isEditableTarget = (target: EventTarget | null) => {
+    if (!(target instanceof HTMLElement)) {
+      return false;
+    }
+
+    return Boolean(
+      target.closest('input, textarea, select, [contenteditable="true"]'),
+    );
+  };
+
   // call onResult when transcript updates
-  React.useEffect(() => {
+  useEffect(() => {
     if (!onResult) {
       return;
     }
@@ -40,29 +47,47 @@ export const PushToTalkButton: React.FC<Props> = ({ onResult }) => {
     onResult(transcript ?? null, parsedResponse ?? null);
   }, [transcript, parsedResponse, onResult]);
 
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.code !== 'Space' || event.repeat || isEditableTarget(event.target)) {
+        return;
+      }
+
+      event.preventDefault();
+
+      if (!isRecording && !isLoading) {
+        void startRecording();
+      }
+    };
+
+    const handleKeyUp = (event: KeyboardEvent) => {
+      if (event.code !== 'Space' || isEditableTarget(event.target)) {
+        return;
+      }
+
+      event.preventDefault();
+
+      if (isRecording) {
+        void stopRecording();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('keyup', handleKeyUp);
+
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('keyup', handleKeyUp);
+    };
+  }, [isLoading, isRecording, startRecording, stopRecording]);
+
   const handleStart = useCallback(async () => {
-    setPressed(true);
     await startRecording();
   }, [startRecording]);
 
   const handleStop = useCallback(async () => {
-    setPressed(false);
     await stopRecording();
   }, [stopRecording]);
-
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === ' ' || e.key === 'Enter') {
-      e.preventDefault();
-      if (!isRecording) handleStart();
-    }
-  };
-
-  const handleKeyUp = (e: React.KeyboardEvent) => {
-    if (e.key === ' ' || e.key === 'Enter') {
-      e.preventDefault();
-      if (isRecording) handleStop();
-    }
-  };
 
   return (
     <div className="flex flex-col items-center">
@@ -70,19 +95,21 @@ export const PushToTalkButton: React.FC<Props> = ({ onResult }) => {
         type="button"
         aria-pressed={isRecording}
         aria-label={isRecording ? 'Recording' : isLoading ? 'Processing voice' : 'Push to talk'}
-        onMouseDown={handleStart}
-        onMouseUp={handleStop}
-        onMouseLeave={() => pressed && isRecording && handleStop()}
-        onTouchStart={(e) => {
+        onPointerDown={(e) => {
           e.preventDefault();
-          handleStart();
+          e.currentTarget.setPointerCapture(e.pointerId);
+          void handleStart();
         }}
-        onTouchEnd={(e) => {
+        onPointerUp={(e) => {
           e.preventDefault();
-          handleStop();
+          void handleStop();
         }}
-        onKeyDown={handleKeyDown}
-        onKeyUp={handleKeyUp}
+        onPointerCancel={() => {
+          void handleStop();
+        }}
+        onLostPointerCapture={() => {
+          void handleStop();
+        }}
         className="flex items-center justify-center w-16 h-16 rounded-full focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 bg-gray-800 text-white"
       >
         {/* Loading state */}
@@ -105,6 +132,10 @@ export const PushToTalkButton: React.FC<Props> = ({ onResult }) => {
           </svg>
         )}
       </button>
+
+      <div className="mt-2 text-center text-[11px] leading-4 text-slate-400">
+        Hold <span className="font-semibold text-slate-200">Space</span> or press and hold the button to talk
+      </div>
 
       {/* small status / error / transcript */}
       <div className="mt-2 text-center text-xs text-gray-300">
