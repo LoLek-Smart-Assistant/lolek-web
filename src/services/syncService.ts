@@ -15,6 +15,7 @@ export interface Item {
   itemId: string;
   itemName: string;
   tags: string[];
+  customTags?: string[];
   image?: string | null;
 }
 

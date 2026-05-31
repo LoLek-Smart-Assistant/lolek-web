@@ -1,5 +1,18 @@
 import type { RecommendationRule } from "./types";
 
+export const customTagCounterMap: Record<string, string[]> = {
+  health: ["percent_health_damage"],
+  armor: ["armor_penetration"],
+  magic_resist: ["magic_penetration"],
+  megic_resist: ["magic_penetration"],
+  shield: ["anti_shield"],
+  healing: ["anti_healing"],
+  life_steal: ["anti_healing"],
+  spell_vamp: ["anti_healing"],
+  attack_speed: ["anti_attack_speed"],
+  critical_strike: ["anti_crit"],
+};
+
 export const recommendationRules: RecommendationRule[] = [
   {
     id: "anti_tank",

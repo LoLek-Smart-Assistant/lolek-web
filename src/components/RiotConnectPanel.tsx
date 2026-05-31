@@ -65,7 +65,7 @@ export function RiotConnectPanel({
           </div>
         </label>
 
-        <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto]">
+        <div className="grid items-end gap-3 sm:grid-cols-[minmax(0,1fr)_auto]">
           <label className="grid gap-2 text-xs font-medium text-slate-400">
             Platform
             <input
@@ -84,14 +84,15 @@ export function RiotConnectPanel({
             type="button"
             onClick={onConnect}
             disabled={isConnecting || !isFormEditable}
-            className="inline-flex min-h-10 w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-cyan-400 to-fuchsia-500 px-3 py-2.5 text-xs font-semibold text-slate-950 shadow-[0_0_24px_rgba(34,211,238,0.2)] transition hover:scale-[1.01] disabled:cursor-wait disabled:opacity-80 sm:w-auto"
+            className="mb-1 inline-flex h-10 w-10 items-center justify-center justify-self-center rounded-full bg-white/[0.1] text-white/80 transition hover:bg-cyan-500/20 hover:text-cyan-200 disabled:cursor-wait disabled:opacity-80"
+            title={isConnecting ? 'Connecting Riot account' : 'Connect Riot account'}
+            aria-label={isConnecting ? 'Connecting Riot account' : 'Connect Riot account'}
           >
             {isConnecting ? (
               <LoaderCircle className="h-4 w-4 animate-spin" />
             ) : (
               <PlugZap className="h-4 w-4" />
             )}
-            {isConnecting ? 'Connecting...' : 'Connect'}
           </button>
         </div>
       </div>

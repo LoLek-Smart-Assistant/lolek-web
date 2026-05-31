@@ -48,6 +48,13 @@ const userService = {
   },
 
   /**
+   * Remove linked Riot account from user profile
+   */
+  removeRiotProfile: () => {
+    return axiosInstance.post('/user/remove-riot-profile');
+  },
+
+  /**
    * Update user profile
    */
   updateProfile: (data: Partial<User>) => {

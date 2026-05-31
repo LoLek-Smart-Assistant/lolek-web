@@ -1,4 +1,6 @@
 import {
+  ChevronDown,
+  ChevronUp,
   ChevronLeft,
   ChevronRight,
   History,
@@ -7,6 +9,7 @@ import {
   LogOut,
   ShieldAlert,
   ShieldCheck,
+  Unplug,
 } from 'lucide-react'
 import { useState } from 'react'
 import { authService } from '../services'
@@ -22,7 +25,10 @@ type SidebarProps = {
   riotId: string
   tagline: string
   platform: string
+  connectedRiotId: string
+  connectedTagline: string
   isConnecting: boolean
+  isRemovingRiotProfile: boolean
   isRiotConnected: boolean
   isEditingRiotProfile: boolean
   username?: string | null
@@ -36,6 +42,7 @@ type SidebarProps = {
   onTaglineChange: (value: string) => void
   onPlatformChange: (value: string) => void
   onEditRiotProfile: () => void
+  onRemoveRiotProfile: () => void
   onConnect: () => void
   onAuthSuccess?: (userData: { username: string; email: string }) => void
   onLogout?: () => void
@@ -49,7 +56,10 @@ export function Sidebar({
   riotId,
   tagline,
   platform,
+  connectedRiotId,
+  connectedTagline,
   isConnecting,
+  isRemovingRiotProfile,
   isRiotConnected,
   isEditingRiotProfile,
   username,
@@ -63,6 +73,7 @@ export function Sidebar({
   onTaglineChange,
   onPlatformChange,
   onEditRiotProfile,
+  onRemoveRiotProfile,
   onConnect,
   onAuthSuccess,
   onLogout,
@@ -206,14 +217,51 @@ export function Sidebar({
           ) : null
         ) : showDetails ? (
           <div className="mt-auto rounded-3xl bg-[linear-gradient(180deg,rgba(15,23,42,0.9),rgba(2,6,23,0.85))] p-4 shadow-[0_25px_80px_rgba(2,6,23,0.75)]">
-            <div className="flex items-center gap-3 justify-between">
+            <div className="flex items-center justify-between gap-3">
+              <button
+                type="button"
+                onClick={isRiotConnected ? onEditRiotProfile : undefined}
+                disabled={!isRiotConnected}
+                className={`flex flex-1 items-center justify-between rounded-2xl border px-3 py-2 text-xs text-left transition ${
+                  isRiotConnected ? 'cursor-pointer hover:bg-white/[0.04]' : 'cursor-default'
+                } ${riotStatus.className}`}
+              >
+                <span className="flex items-center gap-2">
+                  <riotStatus.icon className={`h-4 w-4 ${riotStatus.iconClassName}`} />
+                  {riotStatus.label}
+                </span>
+                {isRiotConnected ? (
+                  isEditingRiotProfile ? (
+                    <ChevronUp className="h-4 w-4 text-emerald-200/90" />
+                  ) : (
+                    <ChevronDown className="h-4 w-4 text-emerald-200/90" />
+                  )
+                ) : null}
+              </button>
+              {isRiotConnected ? (
+                <button
+                  type="button"
+                  onClick={onRemoveRiotProfile}
+                  disabled={isRemovingRiotProfile}
+                  className="rounded-full bg-white/[0.1] p-2 text-white/80 transition hover:bg-red-500/20 hover:text-red-200 disabled:cursor-wait disabled:opacity-80"
+                  title="Disconnect Riot account"
+                >
+                  {isRemovingRiotProfile ? (
+                    <LoaderCircle className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Unplug className="h-4 w-4" />
+                  )}
+                </button>
+              ) : null}
+            </div>
+            <div className="mt-4 flex items-center gap-3 justify-between">
               <div className="flex items-center gap-3">
                 <div>
                   <p className="text-sm font-semibold text-white">{username}</p>
-                  {isRiotConnected && riotId ? (
+                  {isRiotConnected && connectedRiotId ? (
                     <p className="text-xs text-slate-400">
-                      {riotId}
-                      {tagline ? `#${tagline}` : ''}
+                      {connectedRiotId}
+                      {connectedTagline ? `#${connectedTagline}` : ''}
                     </p>
                   ) : null}
                 </div>
@@ -226,26 +274,6 @@ export function Sidebar({
               >
                 <LogOut className="h-4 w-4" />
               </button>
-            </div>
-
-            <div className="mt-4 flex items-center justify-between gap-3">
-              <div
-                className={`flex flex-1 items-center justify-between rounded-2xl border px-3 py-2 text-xs ${riotStatus.className}`}
-              >
-                <span className="flex items-center gap-2">
-                  <riotStatus.icon className={`h-4 w-4 ${riotStatus.iconClassName}`} />
-                  {riotStatus.label}
-                </span>
-              </div>
-              {isRiotConnected ? (
-                <button
-                  type="button"
-                  onClick={onEditRiotProfile}
-                  className="rounded-full bg-white/[0.1] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-white/80 transition hover:bg-white/[0.18]"
-                >
-                  {isEditingRiotProfile ? 'Close' : 'Edit'}
-                </button>
-              ) : null}
             </div>
             {!isRiotConnected || isEditingRiotProfile ? (
               <div className="mt-4">

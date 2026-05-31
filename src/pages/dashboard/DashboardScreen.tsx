@@ -1,6 +1,5 @@
 import {type CSSProperties, useCallback, useEffect, useRef, useState} from 'react'
 
-import { ChatSection } from '../../components/ChatSection'
 import { MatchHistoryPanel } from '../../components/dashboard/MatchHistoryPanel'
 import { MiddleSkeleton } from '../../components/dashboard/MiddleSkeleton'
 import { NoLiveGamePanel } from '../../components/dashboard/NoLiveGamePanel'
@@ -21,17 +20,20 @@ import {
 } from '../../helpers/dashboardLiveGameHelpers'
 import { getRecommendationFromEngine } from '../../helpers/dashboardRecommendationHelpers'
 import {
-    initialChat,
     liveMatch,
     recommendation,
 } from '../../data/mockRiot'
 import { recommendItems } from '../../engine/recommender'
 import authService from '../../services/authService'
+import axiosInstance from '../../config/axiosConfig'
+import mayhemService, { type MayhemChampionResult } from '../../services/mayhemService'
+import itemService from '../../services/itemService'
 import {
   connectLiveGameSummary,
   type LiveGameSummary,
 } from '../../services/liveGameSummarySocket'
 import userService from '../../services/userService'
+import type { MayhemItemEntry as MayhemApiItemEntry } from '../../services/mayhemService'
 import type { ParsedVoiceResponse } from '../../voice/types'
 
 
@@ -45,13 +47,14 @@ export function DashboardScreen() {
   const [riotId, setRiotId] = useState('')
   const [tagline, setTagline] = useState('')
   const [platform, setPlatform] = useState('EUW1')
+  const [connectedRiotId, setConnectedRiotId] = useState('')
+  const [connectedTagline, setConnectedTagline] = useState('')
+  const [connectedPlatform, setConnectedPlatform] = useState('EUW1')
   const [isConnecting, setIsConnecting] = useState(false)
+  const [isRemovingRiotProfile, setIsRemovingRiotProfile] = useState(false)
   const [isRiotConnected, setIsRiotConnected] = useState(false)
   const [isEditingRiotProfile, setIsEditingRiotProfile] = useState(false)
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false)
-  const [messages, setMessages] = useState(initialChat)
-  const [pendingMessage, setPendingMessage] = useState('')
-  const [isTyping, setIsTyping] = useState(false)
   const [voiceTranscript, setVoiceTranscript] = useState<string | null>(null)
   const [voiceParsedResponse, setVoiceParsedResponse] = useState<ParsedVoiceResponse | null>(null)
   const [username, setUsername] = useState<string | null>(null)
@@ -67,7 +70,10 @@ export function DashboardScreen() {
     'Luden', 'Sorcerer', 'Amplifying',
   ])
   const [allChampionItems, setAllChampionItems] = useState<Record<string, (string | null)[]>>({})
+  const [suggestedItemImageMap, setSuggestedItemImageMap] = useState<Record<string, string>>({})
+  const [mayhemResultsByChampion, setMayhemResultsByChampion] = useState<Record<string, MayhemChampionResult>>({})
   const lastProcessedResponseRef = useRef<string | null>(null)
+  const mayhemFetchedGameKeyRef = useRef<string | null>(null)
   const timeoutRef = useRef<number | null>(null)
   const syncProfileFromApi = async () => {
     try {
@@ -79,12 +85,17 @@ export function DashboardScreen() {
         setTagline(profile.riotTag)
         if (profile.platform) {
           setPlatform(profile.platform)
+          setConnectedPlatform(profile.platform)
         }
+        setConnectedRiotId(profile.riotName)
+        setConnectedTagline(profile.riotTag)
         setIsRiotConnected(true)
         setIsEditingRiotProfile(false)
         return
       }
 
+      setConnectedRiotId('')
+      setConnectedTagline('')
       setIsEditingRiotProfile(true)
       setIsRiotConnected(false)
     } catch (error) {
@@ -118,15 +129,15 @@ export function DashboardScreen() {
   }, [])
 
   useEffect(() => {
-    if (!isRiotConnected || !platform || !riotId || !tagline) {
+    if (!isRiotConnected || !connectedPlatform || !connectedRiotId || !connectedTagline) {
       return
     }
 
     const socket = connectLiveGameSummary(
       {
-        platform,
-        gameName: riotId,
-        tagLine: tagline,
+        platform: connectedPlatform,
+        gameName: connectedRiotId,
+        tagLine: connectedTagline,
       },
       {
         onMessage: (message) => {
@@ -163,7 +174,7 @@ export function DashboardScreen() {
     return () => {
       socket.close()
     }
-  }, [isRiotConnected, platform, riotId, tagline])
+  }, [isRiotConnected, connectedPlatform, connectedRiotId, connectedTagline])
 
   useEffect(() => {
     const baseDuration =
@@ -215,6 +226,9 @@ export function DashboardScreen() {
         setUsername(linkedUser.username)
       }
 
+      setConnectedRiotId(riotId)
+      setConnectedTagline(tagline)
+      setConnectedPlatform(platform)
       setIsRiotConnected(true)
       setIsEditingRiotProfile(false)
     } catch (error) {
@@ -243,6 +257,9 @@ export function DashboardScreen() {
     setPassword('')
     setAuthMode('login')
     setIsRiotConnected(false)
+    setConnectedRiotId('')
+    setConnectedTagline('')
+    setConnectedPlatform('EUW1')
     setLiveGameSummary(null)
     setLiveGameMessage(null)
     setIsEditingRiotProfile(false)
@@ -250,28 +267,33 @@ export function DashboardScreen() {
 
   const handleRiotIdChange = (value: string) => {
     setRiotId(value)
-    if (isRiotConnected) {
-      setIsRiotConnected(false)
-      setLiveGameSummary(null)
-      setLiveGameMessage(null)
-    }
   }
 
   const handleTaglineChange = (value: string) => {
     setTagline(value)
-    if (isRiotConnected) {
-      setIsRiotConnected(false)
-      setLiveGameSummary(null)
-      setLiveGameMessage(null)
-    }
   }
 
   const handlePlatformChange = (value: string) => {
     setPlatform(value)
-    if (isRiotConnected) {
+  }
+
+  const handleRemoveRiotProfile = async () => {
+    setIsRemovingRiotProfile(true)
+    try {
+      await userService.removeRiotProfile()
       setIsRiotConnected(false)
+      setIsEditingRiotProfile(true)
       setLiveGameSummary(null)
       setLiveGameMessage(null)
+      setConnectedRiotId('')
+      setConnectedTagline('')
+      setConnectedPlatform('EUW1')
+      setRiotId('')
+      setTagline('')
+    } catch (error) {
+      console.error('Riot disconnect error:', error)
+    } finally {
+      setIsRemovingRiotProfile(false)
     }
   }
 
@@ -279,65 +301,231 @@ export function DashboardScreen() {
     setIsEditingRiotProfile((current) => !current)
   }
 
-  const handleSendMessage = () => {
-    const trimmed = pendingMessage.trim()
-
-    if (!trimmed) {
-      return
-    }
-
-    if (timeoutRef.current) {
-      window.clearTimeout(timeoutRef.current)
-    }
-
-    const timestamp = new Date().toLocaleTimeString([], {
-      hour: '2-digit',
-      minute: '2-digit',
-    })
-
-    const userEntry = {
-      id: Date.now(),
-      role: 'user' as const,
-      author: 'You',
-      message: trimmed,
-      time: timestamp,
-    }
-
-    setMessages((current) => [...current, userEntry])
-    setPendingMessage('')
-    setIsTyping(true)
-
-    timeoutRef.current = window.setTimeout(() => {
-      setMessages((current) => [
-        ...current,
-        {
-          id: Date.now() + 1,
-          role: 'assistant',
-          author: 'LoL AI',
-          message:
-            'Based on this board state, prioritize your burst spike before dragon. Keep defensive pivot options for the next purchase if their assassin gets flank access.',
-          time: new Date().toLocaleTimeString([], {
-            hour: '2-digit',
-            minute: '2-digit',
-          }),
-        },
-      ])
-      setIsTyping(false)
-    }, 1100)
-  }
-
   // Calculate visible teams and mock data flag early
   const shouldUseMockData = !isRiotConnected
   const visibleTeams = getTeamsFromLiveSummary(liveGameSummary, shouldUseMockData)
+
+  const toItemNameList = (value: unknown): string[] => {
+    if (!Array.isArray(value)) return []
+    return value
+      .map((item) => {
+        if (typeof item === 'string' || typeof item === 'number') {
+          return String(item)
+        }
+        if (item && typeof item === 'object') {
+          const itemRecord = item as Record<string, unknown>
+          const byName = itemRecord.itemName
+          const byId = itemRecord.itemId
+          const byGeneric = itemRecord.name
+          if (typeof byName === 'string') return byName
+          if (typeof byId === 'string' || typeof byId === 'number') return String(byId)
+          if (typeof byGeneric === 'string') return byGeneric
+        }
+        return null
+      })
+      .filter((itemName): itemName is string => Boolean(itemName && itemName.trim()))
+  }
+
+  const toEngineMayhemItems = (items: MayhemApiItemEntry[] | undefined) => {
+    if (!items?.length) return []
+
+    return items
+      .map((entry) => ({
+        item: entry.itemName && entry.itemName.trim() ? entry.itemName : String(entry.itemId),
+        customTags: entry.customTags ?? null,
+        image: entry.image ?? null,
+      }))
+      .filter((entry) => Boolean(entry.item && entry.item.trim()))
+  }
+
+  const toItemNames = (items: MayhemApiItemEntry[] | undefined) => {
+    if (!items?.length) return []
+
+    return items
+      .map((entry) => entry.itemName?.trim() || String(entry.itemId))
+      .filter((itemName): itemName is string => Boolean(itemName && itemName.trim()))
+  }
+
+  const livePlayerCurrentItems = toItemNameList(
+    liveGameSummary?.connectedParticipant?.currentItems ??
+      liveGameSummary?.connectedParticipant?.items ??
+      liveGameSummary?.connectedParticipant?.itemIds,
+  )
+  const displayedPlayerCurrentItems = Array.from(
+    new Set([...livePlayerCurrentItems, ...playerCurrentItems]),
+  )
+
+  const enemyCurrentItems = visibleTeams[1]?.players.flatMap((player) => player.currentItems ?? []) ?? []
+  const normalizeChampionKey = (value: string) =>
+    value.replace(/[^a-z0-9]/gi, '').toLowerCase()
+  const connectedChampionName =
+    (typeof liveGameSummary?.connectedParticipant?.championName === 'string' &&
+      liveGameSummary.connectedParticipant.championName.trim()) ||
+    (typeof liveGameSummary?.connectedParticipant?.champion === 'string' &&
+      liveGameSummary.connectedParticipant.champion.trim()) ||
+    null
+  const championsInGame = Array.from(
+    new Set(
+      visibleTeams
+        .flatMap((team) => team.players.map((player) => player.champion))
+        .concat(connectedChampionName ? [connectedChampionName] : [])
+        .filter(Boolean),
+    ),
+  )
+  const championsInGameKey = championsInGame
+    .map((champion) => champion.toLowerCase())
+    .sort((left, right) => left.localeCompare(right))
+    .join('|')
+  const liveGameStartKey = String(liveGameSummary?.gameStartTime ?? '')
+
+  useEffect(() => {
+    if (!championsInGame.length || shouldUseMockData || !liveGameStartKey) {
+      return
+    }
+
+    if (mayhemFetchedGameKeyRef.current === liveGameStartKey) {
+      return
+    }
+
+    mayhemFetchedGameKeyRef.current = liveGameStartKey
+    let cancelled = false
+
+    const loadMayhemRecommendations = async () => {
+      try {
+        if (!itemService.getCachedItems()) {
+          await itemService.fetchItems()
+        }
+
+        const response = await mayhemService.getSuggestedItemsByChampions(championsInGame)
+        if (cancelled) return
+        setMayhemResultsByChampion(
+          Object.fromEntries(
+            (response.results ?? []).map((result) => [
+              normalizeChampionKey(result.championName),
+              result,
+            ]),
+          ),
+        )
+        console.log(
+          '[Mayhem suggested items payload]',
+          (response.results ?? []).map((result) => ({
+            championName: result.championName,
+            coreItems: (result.coreItems ?? []).map((entry) => ({
+              itemId: entry.itemId,
+              itemName: entry.itemName,
+              image: entry.image ?? null,
+              customTags: entry.customTags ?? null,
+            })),
+            suggestedItems: (result.suggestedItems?.allItems ?? []).map((entry) => ({
+              itemId: entry.itemId,
+              itemName: entry.itemName,
+              image: entry.image ?? null,
+              customTags: entry.customTags ?? null,
+            })),
+          })),
+        )
+
+        const recommendedMap: Record<string, (string | null)[]> = {}
+        const imageMap: Record<string, string> = {}
+        const resultByChampionKey = new Map(
+          (response.results ?? []).map((result) => [
+            normalizeChampionKey(result.championName),
+            result,
+          ]),
+        )
+        const toAbsoluteImage = (image?: string | null) => {
+          if (!image) return null
+          if (image.startsWith('http')) return image
+          const base = (axiosInstance.defaults.baseURL as string) || ''
+          return image.startsWith('/') ? `${base}${image}` : `${base}/${image}`
+        }
+        const registerImage = (itemKey: string, image?: string | null) => {
+          const absoluteImage = toAbsoluteImage(image)
+          if (!itemKey || !absoluteImage) return
+          imageMap[itemKey] = absoluteImage
+          imageMap[itemKey.replace(/[^a-z0-9]/gi, '').toLowerCase()] = absoluteImage
+        }
+        const isNumericOnly = (value: string) => /^\d+$/.test(value.trim())
+        const resolveMayhemItemName = (entry: { itemId: number; itemName: string | null; image?: string | null }) => {
+          if (entry.itemName && entry.itemName.trim() && !isNumericOnly(entry.itemName)) {
+            registerImage(entry.itemName, null)
+            return entry.itemName
+          }
+          const fromCatalog = itemService.getItemByKey(String(entry.itemId))
+          if (fromCatalog?.itemName && !isNumericOnly(fromCatalog.itemName)) return fromCatalog.itemName
+          if (entry.image) return `itemid:${entry.itemId}`
+          return null
+        }
+
+        for (const team of visibleTeams) {
+          for (const player of team.players) {
+            const result = resultByChampionKey.get(
+              normalizeChampionKey(player.champion),
+            )
+            if (!result) continue
+
+          const coreNames = (result.coreItems ?? [])
+            .map((entry) => {
+              const resolved = resolveMayhemItemName(entry)
+              registerImage(String(entry.itemId), entry.image)
+              registerImage(`itemid:${entry.itemId}`, entry.image)
+              if (resolved) {
+                registerImage(resolved, entry.image)
+              }
+              return resolved
+            })
+            .filter((itemName): itemName is string => Boolean(itemName && itemName.trim()))
+          const suggestedNames = (result.suggestedItems?.allItems ?? [])
+            .map((entry) => {
+              const resolved = resolveMayhemItemName(entry)
+              registerImage(String(entry.itemId), entry.image)
+              registerImage(`itemid:${entry.itemId}`, entry.image)
+              if (resolved) {
+                registerImage(resolved, entry.image)
+              }
+              return resolved
+            })
+            .filter((itemName): itemName is string => Boolean(itemName && itemName.trim()))
+
+            // Core first, then Mayhem suggestions, capped to the 6 in-game item slots.
+            const unique = Array.from(new Set([...coreNames, ...suggestedNames])).slice(0, 6)
+            if (unique.length === 0) continue
+            recommendedMap[player.champion] = [
+              ...unique,
+              ...Array(Math.max(0, 6 - unique.length)).fill(null),
+            ]
+          }
+        }
+
+        const championKeysInGame = visibleTeams
+          .flatMap((team) => team.players.map((player) => player.champion))
+        setAllChampionItems((current) => {
+          const next = { ...current }
+          for (const champion of championKeysInGame) {
+            delete next[champion]
+          }
+          for (const [champion, items] of Object.entries(recommendedMap)) {
+            next[champion] = items
+          }
+          return next
+        })
+        setSuggestedItemImageMap((current) => ({ ...current, ...imageMap }))
+      } catch (error) {
+        console.error('Failed to load Mayhem suggestions for champions in game:', error)
+      }
+    }
+
+    void loadMayhemRecommendations()
+
+    return () => {
+      cancelled = true
+    }
+  }, [championsInGameKey, shouldUseMockData, liveGameStartKey])
 
   const handleVoiceResult = useCallback(
     (transcript: string | null, parsed: ParsedVoiceResponse | null) => {
       setVoiceTranscript(transcript)
       setVoiceParsedResponse(parsed)
-
-      if (transcript) {
-        setPendingMessage(transcript)
-      }
 
       // Create a unique ID for this response to prevent duplicate processing
       const responseId = `${transcript}|${parsed?.champion}|${parsed?.items?.join(',')}`
@@ -418,15 +606,21 @@ export function DashboardScreen() {
   const isLoggedIn = Boolean(username)
   const shouldShowNoRiotPanel = isLoggedIn && !isRiotConnected
   const shouldShowMiddleSkeleton =
-    isLoggedIn && isRiotConnected && (isConnecting || isEditingRiotProfile)
+    isLoggedIn && isRiotConnected && (isConnecting || isRemovingRiotProfile)
   const activeRecommendation = getRecommendationFromLiveSummary(
     liveGameSummary,
     recommendation,
   )
+  const activeMayhemResult = mayhemResultsByChampion[normalizeChampionKey(activeRecommendation.champion)]
   const engineRecommendations = recommendItems(
     activeRecommendation.champion,
     getEnemyChampionNames(liveGameSummary, visibleTeams, shouldUseMockData),
     6,
+    {
+      enemyCurrentItems,
+      mayhemCoreItems: toEngineMayhemItems(activeMayhemResult?.coreItems),
+      mayhemSuggestedItems: toEngineMayhemItems(activeMayhemResult?.suggestedItems?.allItems),
+    },
   )
   const displayedRecommendation = getRecommendationFromEngine(
     activeRecommendation,
@@ -436,7 +630,7 @@ export function DashboardScreen() {
   return (
     <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(8,145,178,0.16),_transparent_28%),radial-gradient(circle_at_top_right,_rgba(168,85,247,0.14),_transparent_26%),linear-gradient(180deg,_#020617_0%,_#0f172a_45%,_#020617_100%)] px-4 py-4 text-white sm:px-6 lg:px-6">
       <div
-        className="mx-auto grid max-w-[1840px] gap-6 xl:grid-cols-[var(--sidebar-width)_minmax(0,1fr)_440px]"
+        className="mx-auto grid max-w-[1840px] gap-6 xl:grid-cols-[var(--sidebar-width)_minmax(0,1fr)_260px]"
         style={
           {
             '--sidebar-width': isSidebarCollapsed ? '96px' : '300px',
@@ -451,7 +645,10 @@ export function DashboardScreen() {
           riotId={riotId}
           tagline={tagline}
           platform={platform}
+          connectedRiotId={connectedRiotId}
+          connectedTagline={connectedTagline}
           isConnecting={isConnecting}
+          isRemovingRiotProfile={isRemovingRiotProfile}
           isRiotConnected={isRiotConnected}
           isEditingRiotProfile={isEditingRiotProfile}
           username={username}
@@ -465,6 +662,7 @@ export function DashboardScreen() {
           onTaglineChange={handleTaglineChange}
           onPlatformChange={handlePlatformChange}
           onEditRiotProfile={handleEditRiotProfile}
+          onRemoveRiotProfile={handleRemoveRiotProfile}
           onConnect={handleConnect}
           onAuthSuccess={handleAuthSuccess}
           onLogout={handleLogout}
@@ -495,16 +693,17 @@ export function DashboardScreen() {
                             liveGameSummary?.game?.gameLengthSeconds,
                         )}
                       />
-                      {visibleTeams[0] && <TeamPanel team={visibleTeams[0]} champItemsMap={allChampionItems} onRemoveItem={handleRemoveChampionItem} />}
+                      {visibleTeams[0] && <TeamPanel team={visibleTeams[0]} champItemsMap={allChampionItems} itemImageMap={suggestedItemImageMap} onRemoveItem={handleRemoveChampionItem} />}
                     </div>
-                    {visibleTeams[1] && <TeamPanel team={visibleTeams[1]} champItemsMap={allChampionItems} onRemoveItem={handleRemoveChampionItem} />}
+                    {visibleTeams[1] && <TeamPanel team={visibleTeams[1]} champItemsMap={allChampionItems} itemImageMap={suggestedItemImageMap} onRemoveItem={handleRemoveChampionItem} />}
                   </div>
                 </>
               )}
               {!noLiveGameMessage && (
                 <RecommendedBuild
                   recommendation={displayedRecommendation}
-                  playerCurrentItems={playerCurrentItems}
+                  coreItems={toItemNames(activeMayhemResult?.coreItems)}
+                  playerCurrentItems={displayedPlayerCurrentItems}
                   onAddItem={handleAddItemToPlayer}
                 />
               )}
@@ -518,7 +717,7 @@ export function DashboardScreen() {
             <div className="absolute -left-10 top-24 h-28 w-28 rounded-full bg-fuchsia-500/20 blur-3xl" />
 
           <div className="relative">
-            <div className="mb-5 rounded-[28px] border border-white/8 bg-white/[0.04] p-4">
+            <div className="rounded-[28px] border border-white/8 bg-white/[0.04] p-4">
               <div className="mb-3 text-xs uppercase tracking-[0.18em] text-slate-400">
                 Voice input
               </div>
@@ -543,14 +742,6 @@ export function DashboardScreen() {
                 </div>
               )}
             </div>
-            <ChatSection
-              messages={messages}
-              pendingMessage={pendingMessage}
-              isTyping={isTyping}
-              compact
-              onPendingMessageChange={setPendingMessage}
-              onSendMessage={handleSendMessage}
-            />
           </div>
         </aside> ) : null }
       </div>
