@@ -23,6 +23,10 @@ import {
   requestPlayedMatchQueueFlush,
 } from '../../services/playedMatchSync'
 
+function isFilledItemName(value: string | null | undefined) {
+  return typeof value === 'string' && value.trim().length > 0
+}
+
 // Helpers to convert between the UI draft shape and the backend SavePlayedMatchRequest
 function convertDraftToSaveRequest(draft: ManualMatchDraft): SavePlayedMatchRequest {
   return {
@@ -45,16 +49,20 @@ function convertDraftToSaveRequest(draft: ManualMatchDraft): SavePlayedMatchRequ
         championId: player.championId || null,
         role: player.role || null,
         teamPosition: player.teamPosition || null,
-        items: player.items.map((itemName, slot) => {
-          const resolved = itemService.getItemByName?.(itemName)
-          return {
-            itemId: resolved?.itemId || itemName,
-            itemName: resolved?.itemName || itemName,
-            image: resolved?.image ?? null,
-            customTags: resolved?.customTags ?? null,
-            slot,
-          }
-        }),
+        items: player.items
+          .map((itemName, slot) => ({ itemName, slot }))
+          .filter(({ itemName }) => isFilledItemName(itemName))
+          .map(({ itemName, slot }) => {
+            const normalizedName = itemName.trim()
+            const resolved = itemService.getItemByName?.(normalizedName)
+            return {
+              itemId: resolved?.itemId || normalizedName,
+              itemName: resolved?.itemName || normalizedName,
+              image: resolved?.image ?? null,
+              customTags: resolved?.customTags ?? null,
+              slot,
+            }
+          }),
       })),
     })),
   }
@@ -434,24 +442,28 @@ export function ManualMatchEditor({ onSaved, canSyncToBackend = true }: ManualMa
           championId: normalizeText(player.championId) || null,
           role: normalizeText(player.role) || null,
           teamPosition: normalizeText(player.teamPosition) || null,
-          items: player.items.map((itemName, slot) => {
-            const resolvedItem =
+          items: player.items
+            .map((itemName, slot) => ({ itemName, slot }))
+            .filter(({ itemName }) => isFilledItemName(itemName))
+            .map(({ itemName, slot }) => {
+              const normalizedName = itemName.trim()
+              const resolvedItem =
                 items.find((candidate) => {
                   const candidateNames = [candidate.itemName, candidate.itemId]
-                      .filter(Boolean)
-                      .map((value) => String(value).toLowerCase())
+                    .filter(Boolean)
+                    .map((value) => String(value).toLowerCase())
 
-                  return candidateNames.includes(itemName.toLowerCase())
-                }) ?? itemService.getItemByName?.(itemName)
+                  return candidateNames.includes(normalizedName.toLowerCase())
+                }) ?? itemService.getItemByName?.(normalizedName)
 
-            return {
-              itemId: resolvedItem?.itemId || itemName,
-              itemName: resolvedItem?.itemName || itemName,
-              image: resolvedItem?.image ?? null,
-              customTags: resolvedItem?.customTags ?? null,
-              slot,
-            }
-          }),
+              return {
+                itemId: resolvedItem?.itemId || normalizedName,
+                itemName: resolvedItem?.itemName || normalizedName,
+                image: resolvedItem?.image ?? null,
+                customTags: resolvedItem?.customTags ?? null,
+                slot,
+              }
+            }),
         })),
       })),
     }

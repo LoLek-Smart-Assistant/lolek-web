@@ -26,6 +26,7 @@ import {
     recommendation,
 } from '../../data/mockRiot'
 import { recommendItems } from '../../engine/recommender'
+import { isAxiosError } from 'axios'
 import authService from '../../services/authService'
 import axiosInstance from '../../config/axiosConfig'
 import mayhemService, { type MayhemChampionResult } from '../../services/mayhemService'
@@ -54,6 +55,20 @@ type HistoryEntry = {
   matchId?: string
   playedAt?: string
   team?: string
+  teamBuilds?: Array<{
+    teamId: string
+    teamName: string
+    won: boolean
+    players: Array<{
+      champion: string
+      championImage?: string
+      player: string
+      items: Array<{
+        name: string
+        image?: string
+      }>
+    }>
+  }>
 }
 
 
@@ -606,7 +621,7 @@ export function DashboardScreen() {
 
       lastProcessedResponseRef.current = responseId
 
-      // If voice response contains a champion and items, add items only if champion is recognized in the game
+      // If voice response contains a champion and items, apply add/remove only if champion is recognized in the game.
       if (parsed?.champion && parsed?.items && parsed.items.length > 0) {
         const champName = parsed.champion.trim()
 
@@ -619,11 +634,26 @@ export function DashboardScreen() {
         // Only add items if the champion is recognized in the current game
         if (currentChampNames.some((name) => name.toLowerCase() === champName.toLowerCase())) {
           setAllChampionItems((current) => {
-            const champSlots = current[champName] ?? Array(6).fill(null)
+            const existingKey =
+              Object.keys(current).find((name) => name.toLowerCase() === champName.toLowerCase()) ??
+              champName
+            const champSlots = [...(current[existingKey] ?? Array(6).fill(null))]
+            const item = parsed.items?.[0]?.trim()
 
-            // Add ONLY the first item from the response to the first available slot
-            if (parsed.items && parsed.items.length > 0) {
-              const item = parsed.items[0]
+            if (!item) {
+              return current
+            }
+
+            if (parsed.intent === 'enemy_build_remove') {
+              const removeIndex = champSlots.findIndex(
+                (slot) => typeof slot === 'string' && slot.toLowerCase() === item.toLowerCase(),
+              )
+              if (removeIndex === -1) {
+                return current
+              }
+              champSlots[removeIndex] = null
+            } else {
+              // Add ONLY the first item from the response to the first available slot.
               const emptySlotIndex = champSlots.findIndex((slot) => slot === null)
               if (emptySlotIndex !== -1) {
                 champSlots[emptySlotIndex] = item
@@ -632,7 +662,7 @@ export function DashboardScreen() {
 
             return {
               ...current,
-              [champName]: champSlots,
+              [existingKey]: champSlots,
             }
           })
         }
@@ -791,10 +821,40 @@ export function DashboardScreen() {
 
     const loadHistory = async () => {
       try {
-        await playedMatchService.syncPlayedMatches()
+        if (!itemService.getCachedItems()) {
+          try {
+            await itemService.fetchItems()
+          } catch (error) {
+            console.warn('Item catalog preload failed before history render:', error)
+          }
+        }
+
+        if (isRiotConnected) {
+          try {
+            await playedMatchService.syncPlayedMatches()
+          } catch (error) {
+            // Sync failure should not block reading existing history.
+            // 400 is expected for some account states (e.g. no sync source available).
+            if (isAxiosError(error) && error.response?.status === 400) {
+              console.info('Played matches sync skipped (400):', error.response?.data)
+            } else {
+              console.warn('Played matches sync failed, continuing with existing history:', error)
+            }
+          }
+        }
+
         const response = await playedMatchService.getPlayedMatches()
         if (cancelled) return
-        setHistoryEntries(mapPlayedMatchesToHistory(response.data.matches))
+        const mapped = mapPlayedMatchesToHistory(response.data.matches)
+        setHistoryEntries(mapped)
+        precacheImageUrls(
+          mapped.flatMap((entry) =>
+            (entry.teamBuilds ?? []).flatMap((team) => [
+              ...team.players.map((player) => player.championImage),
+              ...team.players.flatMap((player) => player.items.map((item) => item.image)),
+            ]),
+          ),
+        )
       } catch (error) {
         console.error('Failed to load played matches:', error)
         if (!cancelled) {
@@ -808,7 +868,7 @@ export function DashboardScreen() {
     return () => {
       cancelled = true
     }
-  }, [activeTab, isLoggedIn, historyRefreshTick])
+  }, [activeTab, isLoggedIn, isRiotConnected, historyRefreshTick])
 
   return (
     <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(8,145,178,0.16),_transparent_28%),radial-gradient(circle_at_top_right,_rgba(168,85,247,0.14),_transparent_26%),linear-gradient(180deg,_#020617_0%,_#0f172a_45%,_#020617_100%)] px-4 py-4 text-white sm:px-6 lg:px-6">
@@ -948,7 +1008,7 @@ export function DashboardScreen() {
           )}
         </main>
 
-        {isLoggedIn ? (
+        {isLoggedIn && surfaceMode !== 'manual' ? (
           <aside className="relative overflow-hidden rounded-[28px] border border-white/10 bg-slate-950/75 p-5 shadow-[0_0_0_1px_rgba(255,255,255,0.03),0_30px_80px_rgba(3,7,18,0.7)] backdrop-blur-xl xl:sticky xl:top-6 xl:h-[calc(100vh-3rem)]">
             <div className="absolute inset-x-0 top-0 h-40 bg-[radial-gradient(circle_at_top,_rgba(34,211,238,0.24),_transparent_65%)]" />
             <div className="absolute -left-10 top-24 h-28 w-28 rounded-full bg-fuchsia-500/20 blur-3xl" />
@@ -1024,6 +1084,37 @@ function mapPlayedMatchesToHistory(matches: PlayedMatchRecord[]): HistoryEntry[]
       matchId: match.matchId,
       playedAt: formatDateTime(match.endedAt || match.createdAt),
       team: `${playerCount} players • ${myTeam?.name || `Team ${matchRecord.myTeamId ?? ''}`}`,
+      teamBuilds: match.teams.map((team) => ({
+        teamId: String(team.teamId),
+        teamName: team.name || (String(team.teamId) === '200' ? 'Red Team' : 'Blue Team'),
+        won: Boolean(team.won),
+        players: (team.players ?? []).map((player) => {
+          const championImage =
+            toAbsoluteApiImage(player.championImage) ||
+            undefined
+
+          return {
+            champion: player.championName || 'Unknown',
+            championImage,
+            player: player.riotId || player.summonerName || 'Unknown player',
+            items: (player.items ?? [])
+              .map((it) => {
+                const name = it?.itemName || it?.itemId || ''
+                const itemId = it?.itemId ? String(it.itemId) : ''
+                const catalogImage = toAbsoluteApiImage(itemService.getItemByKey(itemId)?.image)
+                const image =
+                  toAbsoluteApiImage(it?.image) ||
+                  catalogImage
+
+                return {
+                  name,
+                  image,
+                }
+              })
+              .filter((item) => Boolean(item.name && item.name.trim())),
+          }
+        }),
+      })),
     }
   })
 }
@@ -1039,4 +1130,12 @@ function formatDateTime(value?: string | null) {
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return 'Unknown time'
   return date.toLocaleString()
+}
+
+function toAbsoluteApiImage(image?: string | null) {
+  if (!image) return undefined
+  if (/^https?:\/\//i.test(image)) return image
+  const base = (axiosInstance.defaults.baseURL as string) || ''
+  if (!base) return image
+  return image.startsWith('/') ? `${base}${image}` : `${base}/${image}`
 }
