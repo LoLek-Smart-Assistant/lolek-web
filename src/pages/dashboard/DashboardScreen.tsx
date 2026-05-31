@@ -356,6 +356,10 @@ export function DashboardScreen() {
   )
 
   const enemyCurrentItems = visibleTeams[1]?.players.flatMap((player) => player.currentItems ?? []) ?? []
+  const myTeamCurrentItems = [
+    ...(visibleTeams[0]?.players.flatMap((player) => player.currentItems ?? []) ?? []),
+    ...displayedPlayerCurrentItems,
+  ]
   const normalizeChampionKey = (value: string) =>
     value.replace(/[^a-z0-9]/gi, '').toLowerCase()
   const connectedChampionName =
@@ -364,12 +368,34 @@ export function DashboardScreen() {
     (typeof liveGameSummary?.connectedParticipant?.champion === 'string' &&
       liveGameSummary.connectedParticipant.champion.trim()) ||
     null
+  const liveParticipantChampions: string[] = [
+    ...(liveGameSummary?.game?.participants ?? []),
+    ...(liveGameSummary?.participants ?? []),
+    ...(liveGameSummary?.myTeam ?? []),
+    ...(liveGameSummary?.enemyTeam ?? []),
+    ...(liveGameSummary?.connectedParticipant ? [liveGameSummary.connectedParticipant] : []),
+  ]
+    .map((participant) => {
+      if (typeof participant.championName === 'string' && participant.championName.trim()) {
+        return participant.championName.trim()
+      }
+
+      if (typeof participant.champion === 'string' && participant.champion.trim()) {
+        return participant.champion.trim()
+      }
+
+      return null
+    })
+    .filter((champion): champion is string => Boolean(champion && champion.trim()))
+  const championsInGameCandidates: string[] = [
+    ...liveParticipantChampions,
+    connectedChampionName ?? '',
+  ]
   const championsInGame = Array.from(
     new Set(
-      visibleTeams
-        .flatMap((team) => team.players.map((player) => player.champion))
-        .concat(connectedChampionName ? [connectedChampionName] : [])
-        .filter(Boolean),
+      championsInGameCandidates.filter(
+        (champion): champion is string => Boolean(champion && champion.trim()),
+      ),
     ),
   )
   const championsInGameKey = championsInGame
@@ -617,6 +643,7 @@ export function DashboardScreen() {
     getEnemyChampionNames(liveGameSummary, visibleTeams, shouldUseMockData),
     6,
     {
+      myTeamCurrentItems,
       enemyCurrentItems,
       mayhemCoreItems: toEngineMayhemItems(activeMayhemResult?.coreItems),
       mayhemSuggestedItems: toEngineMayhemItems(activeMayhemResult?.suggestedItems?.allItems),

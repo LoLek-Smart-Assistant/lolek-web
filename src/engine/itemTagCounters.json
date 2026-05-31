@@ -1,0 +1,14 @@
+{
+  "armor": ["armor_penetration"],
+  "attack_speed": ["anti_attack_speed"],
+  "critical_strike": ["anti_crit"],
+  "damage": ["armor"],
+  "health": ["percent_health_damage"],
+  "health_regen": ["anti_healing"],
+  "life_steal": ["anti_healing"],
+  "spell_vamp": ["anti_healing"],
+  "slow": ["anti_slow"],
+  "spell_damage": ["magic_resist"],
+  "shield": ["anti_shield"],
+  "magic_resist": ["magic_penetration"]
+}
