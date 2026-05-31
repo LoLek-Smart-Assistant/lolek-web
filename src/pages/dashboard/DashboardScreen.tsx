@@ -1,4 +1,4 @@
-import { type CSSProperties, useCallback, useEffect, useRef, useState } from 'react'
+import { type CSSProperties, useCallback, useEffect, useRef, useState, useMemo } from 'react'
 
 import { MatchHistoryPanel } from '../../components/dashboard/MatchHistoryPanel'
 import { ManualMatchEditor } from '../../components/dashboard/ManualMatchEditor'
@@ -7,7 +7,7 @@ import { NoLiveGamePanel } from '../../components/dashboard/NoLiveGamePanel'
 import { NoRiotAccountPanel } from '../../components/dashboard/NoRiotAccountPanel'
 import { WelcomePanel } from '../../components/dashboard/WelcomePanel'
 import { MatchStatusCard } from '../../components/MatchStatusCard'
-import { RecommendedBuild } from '../../components/RecommendedBuild'
+import { RecommendedBuild, buildFeaturedItems } from '../../components/RecommendedBuild'
 import PushToTalkButton from '../../components/PushToTalkButton'
 import { Sidebar } from '../../components/Sidebar'
 import { TeamPanel } from '../../components/TeamPanel'
@@ -31,6 +31,7 @@ import axiosInstance from '../../config/axiosConfig'
 import mayhemService, { type MayhemChampionResult } from '../../services/mayhemService'
 import playedMatchService, { type PlayedMatchRecord } from '../../services/playedMatchService'
 import itemService, { precacheImageUrls } from '../../services/itemService'
+import type { Item } from '../../services/syncService'
 import {
   connectLiveGameSummary,
   type LiveGameSummary,
@@ -81,12 +82,21 @@ export function DashboardScreen() {
     undefined,
   )
   const [historyEntries, setHistoryEntries] = useState<HistoryEntry[]>([...mockHistory])
-  const [playerCurrentItems, setPlayerCurrentItems] = useState<string[]>([
+  const [playerCurrentItems] = useState<string[]>([
     'Luden', 'Sorcerer', 'Amplifying',
   ])
+  const [recommendedBuildItems, setRecommendedBuildItems] = useState<(string | null)[]>([])
   const [allChampionItems, setAllChampionItems] = useState<Record<string, (string | null)[]>>({})
   const [suggestedItemImageMap, setSuggestedItemImageMap] = useState<Record<string, string>>({})
   const [mayhemResultsByChampion, setMayhemResultsByChampion] = useState<Record<string, MayhemChampionResult>>({})
+  const [items, setItems] = useState<Item[]>([])
+  const [itemSearch, setItemSearch] = useState('')
+  const [addItemModalTarget, setAddItemModalTarget] = useState<{
+    kind: 'team-slot' | 'recommended-build'
+    champName?: string
+    playerIndex?: number
+    slotIndex?: number
+  } | null>(null)
   const lastProcessedResponseRef = useRef<string | null>(null)
   const mayhemFetchedGameKeyRef = useRef<string | null>(null)
   const timeoutRef = useRef<number | null>(null)
@@ -620,15 +630,13 @@ export function DashboardScreen() {
     [liveGameSummary, shouldUseMockData],
   )
 
-   const handleAddItemToPlayer = (itemName: string) => {
-     setPlayerCurrentItems((current) => {
-       // Prevent adding duplicate items
-       if (current.includes(itemName)) {
-         return current
-       }
-       return [...current, itemName]
-     })
-   }
+  const handleRemoveRecommendedBuildItem = (slotIndex: number) => {
+    setRecommendedBuildItems((current) => {
+      const next = [...current]
+      next[slotIndex] = null
+      return next
+    })
+  }
 
   const handleRemoveChampionItem = (champName: string, slotIndex: number) => {
     setAllChampionItems((current) => {
@@ -678,6 +686,81 @@ export function DashboardScreen() {
     activeRecommendation,
     engineRecommendations,
   )
+
+  const recommendedBuildTemplate = useMemo(
+    () =>
+      buildFeaturedItems(
+        toItemNames(activeMayhemResult?.coreItems),
+        displayedRecommendation.nextItems,
+        displayedRecommendation.buildPath,
+      ),
+    [activeMayhemResult, displayedRecommendation],
+  )
+
+  const recommendedBuildTemplateKey = useMemo(
+    () => recommendedBuildTemplate.join('|'),
+    [recommendedBuildTemplate],
+  )
+
+  useEffect(() => {
+    setRecommendedBuildItems(recommendedBuildTemplate)
+  }, [recommendedBuildTemplateKey])
+
+  useEffect(() => {
+    let active = true
+    itemService.fetchItems().then((loaded) => {
+      if (!active) return
+      if (loaded?.length) setItems(loaded)
+    }).catch(() => {})
+    return () => { active = false }
+  }, [])
+
+  const filteredItems = useMemo(() => {
+    const query = itemSearch.trim().toLowerCase()
+    if (!query) return items.slice(0, 18)
+    return items.filter((item) => {
+      const haystacks = [item.itemName, item.itemId, ...(item.tags ?? []), ...(item.customTags ?? [])]
+        .filter(Boolean)
+        .map((v) => String(v).toLowerCase())
+      return haystacks.some((v) => v.includes(query))
+    })
+  }, [itemSearch, items])
+
+  const openAddItemModal = (champName: string, playerIndex: number, slotIndex: number) => {
+    setAddItemModalTarget({ kind: 'team-slot', champName, playerIndex, slotIndex })
+    setItemSearch('')
+  }
+
+  const openRecommendedBuildAddItemModal = (slotIndex: number) => {
+    setAddItemModalTarget({ kind: 'recommended-build', slotIndex })
+    setItemSearch('')
+  }
+
+  const closeAddItemModal = () => setAddItemModalTarget(null)
+
+  const handleSelectItemFromModal = (item: Item) => {
+    if (!addItemModalTarget) return
+    const itemName = item.itemName || item.itemId
+    if (addItemModalTarget.kind === 'recommended-build') {
+      if (addItemModalTarget.slotIndex === undefined) {
+        closeAddItemModal()
+        return
+      }
+
+      setRecommendedBuildItems((current) => {
+        const next = [...current]
+        next[addItemModalTarget.slotIndex!] = itemName
+        return next
+      })
+    } else if (addItemModalTarget.champName !== undefined && addItemModalTarget.slotIndex !== undefined) {
+      setAllChampionItems((current) => {
+        const champSlots = [...(current[addItemModalTarget.champName!] ?? Array(6).fill(null))]
+        champSlots[addItemModalTarget.slotIndex!] = itemName
+        return { ...current, [addItemModalTarget.champName!]: champSlots }
+      })
+    }
+    closeAddItemModal()
+  }
 
   useEffect(() => {
     if (!isLoggedIn || activeTab !== 'history') {
@@ -786,10 +869,43 @@ export function DashboardScreen() {
                               liveGameSummary?.game?.gameLengthSeconds,
                           )}
                         />
-                        {visibleTeams[0] && <TeamPanel team={visibleTeams[0]} champItemsMap={allChampionItems} itemImageMap={suggestedItemImageMap} onRemoveItem={handleRemoveChampionItem} />}
+                        {visibleTeams[0] && <TeamPanel team={visibleTeams[0]} champItemsMap={allChampionItems} itemImageMap={suggestedItemImageMap} onRemoveItem={handleRemoveChampionItem} onOpenAdd={openAddItemModal} />}
                       </div>
-                      {visibleTeams[1] && <TeamPanel team={visibleTeams[1]} champItemsMap={allChampionItems} itemImageMap={suggestedItemImageMap} onRemoveItem={handleRemoveChampionItem} />}
+                      {visibleTeams[1] && <TeamPanel team={visibleTeams[1]} champItemsMap={allChampionItems} itemImageMap={suggestedItemImageMap} onRemoveItem={handleRemoveChampionItem} onOpenAdd={openAddItemModal} />}
                     </div>
+                    {addItemModalTarget ? (
+                      <div className="fixed inset-0 z-50 flex items-start justify-center p-6">
+                        <div className="absolute inset-0 bg-black/60" onClick={closeAddItemModal} />
+                        <div className="relative z-10 w-full max-w-2xl rounded-2xl bg-slate-900/95 p-4 shadow-2xl">
+                          <div className="mb-3 flex items-center justify-between">
+                            <h4 className="text-sm font-semibold text-white">Add item</h4>
+                            <button type="button" onClick={closeAddItemModal} className="text-slate-400 hover:text-slate-200">Close</button>
+                          </div>
+                          <div className="mb-2">
+                            <input
+                              value={itemSearch}
+                              onChange={(e) => setItemSearch(e.target.value)}
+                              placeholder="Search items by name or tag"
+                              className="w-full rounded-lg border border-white/10 bg-slate-950/80 px-3 py-2 text-sm text-white outline-none"
+                            />
+                          </div>
+                          <div className="max-h-72 overflow-auto">
+                            {filteredItems.map((item) => (
+                              <button
+                                key={item.itemId}
+                                type="button"
+                                onClick={() => handleSelectItemFromModal(item)}
+                                className="mb-1 flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left hover:bg-white/5"
+                              >
+                                <div className="flex h-8 w-8 items-center justify-center rounded bg-white/5 text-xs text-white">{item.itemName?.slice(0,2)}</div>
+                                <div className="flex-1 text-sm text-slate-200">{item.itemName}</div>
+                                <div className="text-xs text-slate-400">{item.itemId}</div>
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    ) : null}
                   </>
                 )
               )}
@@ -797,8 +913,9 @@ export function DashboardScreen() {
                 <RecommendedBuild
                   recommendation={displayedRecommendation}
                   coreItems={toItemNames(activeMayhemResult?.coreItems)}
-                  playerCurrentItems={displayedPlayerCurrentItems}
-                  onAddItem={handleAddItemToPlayer}
+                  items={recommendedBuildItems}
+                  onOpenAdd={openRecommendedBuildAddItemModal}
+                  onRemoveItem={handleRemoveRecommendedBuildItem}
                 />
               )}
             </>
