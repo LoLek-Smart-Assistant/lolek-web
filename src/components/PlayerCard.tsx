@@ -4,10 +4,11 @@ import itemService from '../services/itemService'
 type PlayerCardProps = {
   player: Player
   voiceAddedItems?: (string | null)[]
+  itemImageMap?: Record<string, string>
   onRemoveItem?: (slotIndex: number) => void
 }
 
-export function PlayerCard({ player, voiceAddedItems = [], onRemoveItem }: PlayerCardProps) {
+export function PlayerCard({ player, voiceAddedItems = [], itemImageMap = {}, onRemoveItem }: PlayerCardProps) {
   const championInitials = player.champion.slice(0, 2).toUpperCase()
 
   // Merge current items and voice items into 6 slots
@@ -15,7 +16,7 @@ export function PlayerCard({ player, voiceAddedItems = [], onRemoveItem }: Playe
     .fill(null)
     .map((_, i) => {
       // Prioritize voice items in the array
-      if (voiceAddedItems[i] !== undefined) {
+      if (voiceAddedItems[i] !== undefined && voiceAddedItems[i] !== null) {
         return voiceAddedItems[i]
       }
       // Then fill with current items
@@ -60,6 +61,7 @@ export function PlayerCard({ player, voiceAddedItems = [], onRemoveItem }: Playe
           <ItemStrip
             items={itemsWithSlots}
             currentCount={player.currentItems.length}
+            itemImageMap={itemImageMap}
             onRemoveItem={onRemoveItem}
           />
         </div>
@@ -71,13 +73,14 @@ export function PlayerCard({ player, voiceAddedItems = [], onRemoveItem }: Playe
 type ItemStripProps = {
   items: (string | null)[]
   currentCount: number
+  itemImageMap: Record<string, string>
   onRemoveItem?: (slotIndex: number) => void
 }
 
-function ItemStrip({ items, currentCount, onRemoveItem }: ItemStripProps) {
+function ItemStrip({ items, currentCount, itemImageMap, onRemoveItem }: ItemStripProps) {
   return (
-    <div className="overflow-x-auto pb-1">
-      <div className="flex min-w-max gap-2 lg:justify-end relative">
+    <div className="w-full pb-1">
+      <div className="grid w-full grid-cols-6 gap-2">
       {items.map((item, index) => {
         let variant: 'default' | 'glow' | 'empty'
         if (!item) {
@@ -93,6 +96,7 @@ function ItemStrip({ items, currentCount, onRemoveItem }: ItemStripProps) {
             key={`${item || 'empty'}-${index}`}
             item={item}
             variant={variant}
+            itemImageMap={itemImageMap}
             slotIndex={index}
             onRemove={onRemoveItem}
           />
@@ -106,15 +110,16 @@ function ItemStrip({ items, currentCount, onRemoveItem }: ItemStripProps) {
 type ItemIconProps = {
   item: string | null
   variant: 'default' | 'glow' | 'empty'
+  itemImageMap: Record<string, string>
   slotIndex: number
   onRemove?: (slotIndex: number) => void
 }
 
-function ItemIcon({ item, variant, slotIndex, onRemove }: ItemIconProps) {
+function ItemIcon({ item, variant, itemImageMap, slotIndex, onRemove }: ItemIconProps) {
   if (!item) {
     return (
-      <div className="w-11 shrink-0 text-center flex-col items-center gap-1 justify-center hidden lg:flex">
-        <div className="flex h-9 w-9 items-center justify-center rounded-lg border border-white/20 bg-white/[0.02]">
+      <div className="mx-auto w-[28px] text-center">
+        <div className="flex aspect-square w-[28px] items-center justify-center rounded-lg border border-white/20 bg-white/[0.02]">
           <div className="text-[10px] text-slate-500">—</div>
         </div>
       </div>
@@ -128,14 +133,23 @@ function ItemIcon({ item, variant, slotIndex, onRemove }: ItemIconProps) {
     .slice(0, 2)
     .toUpperCase()
 
+  const normalizeItemKey = (value: string) =>
+    value.replace(/[^a-z0-9]/gi, '').toLowerCase()
+  const isSyntheticItemId = item.startsWith('itemid:')
+  const isNumericOnly = /^\d+$/.test(item.trim())
+
   // Get item image from service
   const itemMeta = itemService.getItemByName?.(item)
-  const itemImage = itemMeta?.image
+  const itemImage =
+    itemMeta?.image ??
+    itemImageMap[item] ??
+    itemImageMap[normalizeItemKey(item)] ??
+    null
 
   return (
-    <div className="w-11 shrink-0 text-center flex-col items-center gap-1 justify-center hidden lg:flex group relative">
+    <div className="group relative mx-auto w-[45px] text-center">
       <div
-        className={`flex h-9 w-9 items-center justify-center rounded-lg border text-[10px] font-semibold overflow-hidden ${
+        className={`flex aspect-square w-[45px] items-center justify-center overflow-hidden rounded-lg border text-[10px] font-semibold ${
           variant === 'glow'
             ? 'border-fuchsia-400/35 bg-[radial-gradient(circle_at_top_center,_rgba(217,70,239,0.42),_rgba(59,7,100,0.88)_70%)] text-fuchsia-50 shadow-[0_0_20px_rgba(217,70,239,0.22),0_-8px_24px_rgba(217,70,239,0.18)]'
             : 'border-white/10 bg-[radial-gradient(circle_at_top,_rgba(34,211,238,0.16),_rgba(15,23,42,0.92))] text-slate-100'
@@ -159,13 +173,18 @@ function ItemIcon({ item, variant, slotIndex, onRemove }: ItemIconProps) {
             e.stopPropagation()
             onRemove(slotIndex)
           }}
-          className="absolute z-20 -top-1 -right-1 flex h-6 w-6 items-center justify-center rounded-full bg-red-500 text-white opacity-100 transition-all duration-200 hover:bg-red-600 hover:scale-125 pointer-events-auto cursor-pointer shadow-lg"
+          className="absolute -top-1.5 -right-1.5 z-20 flex h-[22px] w-[22px] items-center justify-center rounded-full border border-white/15 bg-slate-950/95 text-white shadow-[0_6px_18px_rgba(15,23,42,0.45)] backdrop-blur-sm transition-all duration-200 hover:-translate-y-0.5 hover:scale-110 hover:border-white/30 hover:bg-rose-500/95 focus:outline-none focus:ring-2 focus:ring-rose-400/60 pointer-events-auto cursor-pointer"
           aria-label="Remove item"
         >
-          <span className="text-sm font-bold leading-none">×</span>
+          <span className="relative block h-2.5 w-2.5">
+            <span className="absolute left-1/2 top-1/2 h-0.5 w-2.5 -translate-x-1/2 -translate-y-1/2 rotate-45 rounded-full bg-current" />
+            <span className="absolute left-1/2 top-1/2 h-0.5 w-2.5 -translate-x-1/2 -translate-y-1/2 -rotate-45 rounded-full bg-current" />
+          </span>
         </button>
       )}
-      <p className="mt-1 truncate text-[8px] leading-3 text-slate-400">{item}</p>
+      <p className="mt-1 truncate text-[8px] leading-3 text-slate-400">
+        {isSyntheticItemId || isNumericOnly ? '' : item}
+      </p>
     </div>
   )
 }

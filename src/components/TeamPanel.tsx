@@ -7,10 +7,11 @@ import { PlayerCard } from './PlayerCard'
 type TeamPanelProps = {
   team: Team
   champItemsMap?: Record<string, (string | null)[]>
+  itemImageMap?: Record<string, string>
   onRemoveItem?: (champName: string, slotIndex: number) => void
 }
 
-export function TeamPanel({ team, champItemsMap = {}, onRemoveItem }: TeamPanelProps) {
+export function TeamPanel({ team, champItemsMap = {}, itemImageMap = {}, onRemoveItem }: TeamPanelProps) {
   const accent =
     team.side === 'blue'
       ? 'from-cyan-400/30 to-blue-500/10 border-cyan-400/20'
@@ -42,7 +43,8 @@ export function TeamPanel({ team, champItemsMap = {}, onRemoveItem }: TeamPanelP
           <PlayerCard
             key={`${team.name}-${player.summonerName}`}
             player={player}
-            voiceAddedItems={champItemsMap[player.champion] ?? Array(6).fill(null)}
+            voiceAddedItems={champItemsMap[player.champion]}
+            itemImageMap={itemImageMap}
             onRemoveItem={(slotIndex) => onRemoveItem?.(player.champion, slotIndex)}
           />
         ))}

@@ -48,6 +48,12 @@ export interface ItemScore {
   image?: string | null;
 }
 
+export interface MayhemItemEntry {
+  item: string;
+  customTags?: string[] | null;
+  image?: string | null;
+}
+
 export interface ChampionBuildProfile {
   coreItems: string[];
   coreBoots: string[];

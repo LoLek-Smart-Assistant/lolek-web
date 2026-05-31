@@ -7,16 +7,22 @@ import itemService from '../services/itemService'
 
 type RecommendedBuildProps = {
   recommendation: Recommendation
+  coreItems?: string[]
   playerCurrentItems?: string[]
   onAddItem?: (item: string) => void
 }
 
 export function RecommendedBuild({
   recommendation,
+  coreItems = [],
   playerCurrentItems = [],
   onAddItem,
 }: RecommendedBuildProps) {
-  const featuredItems = recommendation.buildPath.slice(0, 6)
+  const featuredItems = buildFeaturedItems(
+    coreItems,
+    recommendation.nextItems,
+    recommendation.buildPath,
+  )
   const [itemsReady, setItemsReady] = useState(
     Boolean(itemService.getCachedItems()),
   )
@@ -180,7 +186,10 @@ function RecommendedItemTile({
     .slice(0, 2)
     .toUpperCase()
 
-  const image = itemService.getItemByName?.(item)?.image ?? undefined
+  const image =
+    itemService.getItemByKey(item)?.image ??
+    itemService.getItemByName?.(item)?.image ??
+    undefined
 
   const handleClick = () => {
     if (onAddItem && !isAdded) {
@@ -211,4 +220,29 @@ function RecommendedItemTile({
       {isAdded && <p className="mt-1 text-[8px] text-emerald-400">✓ Added</p>}
     </div>
   )
+}
+
+function buildFeaturedItems(coreItems: string[], nextItems: string[], buildPath: string[]) {
+  const seen = new Set<string>()
+  const featured: string[] = []
+
+  const pushUnique = (item: string) => {
+    const key = normalizeItemKey(item)
+    if (!key || seen.has(key)) {
+      return
+    }
+
+    seen.add(key)
+    featured.push(item)
+  }
+
+  coreItems.slice(0, 3).forEach(pushUnique)
+  nextItems.forEach(pushUnique)
+  buildPath.forEach(pushUnique)
+
+  return featured.slice(0, 6)
+}
+
+function normalizeItemKey(value: string) {
+  return value.replace(/[^a-z0-9]/gi, '').toLowerCase()
 }

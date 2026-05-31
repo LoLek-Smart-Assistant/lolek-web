@@ -3,9 +3,11 @@ import {
   getChampionBuildProfile,
 } from "./championBuilds";
 import { analyzeEnemyChampions, getChampionTags } from "./analyzer";
+import { customTagCounterMap } from "./rules";
 import { scoreItems } from "./scorer";
-import type { RecommendationResult } from "./types";
+import type { MayhemItemEntry, RecommendationResult } from "./types";
 import itemService from "../services/itemService";
+import type { Item } from "../services";
 
 // Default fallbacks based on champion type
 const getFallbackBuildProfile = (championName: string) => {
@@ -25,10 +27,31 @@ const getFallbackBuildProfile = (championName: string) => {
   }
 };
 
+type RecommendItemsOptions = {
+  enemyCurrentItems?: string[];
+  mayhemCoreItems?: MayhemItemEntry[];
+  mayhemSuggestedItems?: MayhemItemEntry[];
+};
+
+const normalizeItemKey = (name: string) =>
+  name
+    .replace(/'s/gi, "")
+    .replace(/[^a-z0-9]/gi, "")
+    .toLowerCase();
+
+const resolveCatalogItem = (
+  itemName: string,
+  itemsCatalog: Record<string, Item> | null | undefined,
+) => {
+  const normalized = normalizeItemKey(itemName);
+  return itemsCatalog?.[normalized] ?? itemService.getItemByKey(itemName);
+};
+
 export const recommendItems = (
   myChampion: string,
   enemyChampions: string[],
   limit = 6,
+  options: RecommendItemsOptions = {},
 ): RecommendationResult => {
   const buildProfile = getChampionBuildProfile(myChampion) ?? getFallbackBuildProfile(myChampion);
 
@@ -40,42 +63,44 @@ export const recommendItems = (
     analyzeEnemyChampions(myChampion, enemyChampions),
     undefined,
     itemsCatalog,
+    {
+      mayhemCoreItems: options.mayhemCoreItems ?? [],
+      mayhemSuggestedItems: options.mayhemSuggestedItems ?? [],
+      enemyCurrentItems: options.enemyCurrentItems ?? [],
+      customTagCounterMap,
+    },
   );
 
   if (scored.length >= limit) {
     return scored.slice(0, limit);
   }
 
-  // If we don't have enough scored items, fill from the champion's build profile
-  const normalizeKey = (name: string) =>
-    name
-      .replace(/'s/gi, "")
-      .replace(/[^a-z0-9]/gi, "")
-      .toLowerCase();
-
-  const existing = new Set(scored.map((s) => normalizeKey(s.item)));
+  // If we don't have enough scored items, fill from the champion's build profile.
+  const existing = new Set(scored.map((s) => normalizeItemKey(s.item)));
   const fillers: typeof scored = [];
 
   const pushIfNew = (name: string, reason = "Fallback build item") => {
     if (!name) return;
-    const key = normalizeKey(name);
+    const key = normalizeItemKey(name);
     if (existing.has(key)) return;
     existing.add(key);
-    const meta = itemsCatalog?.[key];
+    const meta = resolveCatalogItem(name, itemsCatalog);
     const display = meta?.itemName ?? name;
     fillers.push({ item: display, score: 1, reasons: [reason], image: meta?.image ?? null });
   };
 
-  // Core items and boots
-  for (const it of buildProfile.coreItems) pushIfNew(it, "Core fallback");
-  for (const b of buildProfile.coreBoots) pushIfNew(b, "Core boots fallback");
-
-  // All situational items from the profile
-  for (const list of Object.values(buildProfile.situationalItems)) {
-    for (const it of list ?? []) pushIfNew(it, "Situational fallback");
-    if (existing.size >= limit) break;
+  if (existing.size < limit) {
+    for (const it of buildProfile.coreItems) pushIfNew(it, "Core fallback");
+    for (const b of buildProfile.coreBoots) pushIfNew(b, "Core boots fallback");
   }
 
-  const combined = [...scored, ...fillers];
-  return combined.slice(0, limit);
+  // All situational items from the profile
+  if (existing.size < limit) {
+    for (const list of Object.values(buildProfile.situationalItems)) {
+      for (const it of list ?? []) pushIfNew(it, "Situational fallback");
+      if (existing.size >= limit) break;
+    }
+  }
+
+  return [...scored, ...fillers].slice(0, limit);
 };
