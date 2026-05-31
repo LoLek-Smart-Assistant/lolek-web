@@ -34,18 +34,20 @@ export function PlayerCard({ player, voiceAddedItems = [], itemImageMap = {}, on
     })
 
   return (
-    <article className="overflow-hidden rounded-[20px] border border-white/8 bg-slate-950/75 px-3 py-2.5 transition hover:border-cyan-400/20 hover:bg-slate-950/90">
+    <article className="overflow-visible rounded-[20px] border border-white/8 bg-slate-950/75 px-3 py-2.5 transition hover:border-cyan-400/20 hover:bg-slate-950/90">
       <div className="grid min-w-0 gap-3 lg:grid-cols-[140px_minmax(0,1fr)] lg:items-center">
         <div className="flex min-w-0 items-center gap-3">
           {player.championImage ? (
-            <img
-              src={player.championImage}
-              alt={player.champion}
-              className="h-11 w-11 shrink-0 rounded-full object-cover shadow-[0_0_20px_rgba(56,189,248,0.22)] ring-2 ring-white/10"
-            />
+            <div className="h-13 min-w-13 overflow-hidden rounded-full ring-2 ring-white/10 shadow-[0_0_20px_rgba(56,189,248,0.22)]">
+              <img
+                src={player.championImage}
+                alt={player.champion}
+                className="h-full w-full scale-110 object-cover"
+               />
+            </div>
           ) : (
             <div
-              className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-gradient-to-br ${player.accent} text-[10px] font-semibold text-slate-950 shadow-[0_0_20px_rgba(56,189,248,0.22)] ring-2 ring-white/10`}
+              className={`flex h-13 w-13 shrink-0 items-center justify-center rounded-full bg-gradient-to-br ${player.accent} text-[10px] font-semibold text-slate-950 shadow-[0_0_20px_rgba(56,189,248,0.22)] ring-2 ring-white/10`}
             >
               {championInitials}
             </div>
@@ -164,6 +166,7 @@ function ItemIcon({ item, variant, itemImageMap, slotIndex, onRemove, onOpenAdd 
     itemImageMap[item] ??
     itemImageMap[normalizeItemKey(item)] ??
     null
+  const itemDescription = itemMeta?.description?.trim() || undefined
 
   return (
     <div className="group relative mx-auto w-[45px] text-center">
@@ -201,6 +204,11 @@ function ItemIcon({ item, variant, itemImageMap, slotIndex, onRemove, onOpenAdd 
           </span>
         </button>
       )}
+      {itemDescription ? (
+        <div className="pointer-events-none absolute left-1/2 top-full z-30 mt-2 w-56 -translate-x-1/2 rounded-lg border border-white/15 bg-slate-950/95 px-2.5 py-2 text-left text-[10px] leading-4 text-slate-100 opacity-0 shadow-[0_10px_25px_rgba(15,23,42,0.55)] transition-opacity duration-150 group-hover:opacity-100">
+          {itemDescription}
+        </div>
+      ) : null}
       <p className="mt-1 truncate text-[8px] leading-3 text-slate-400">
         {isSyntheticItemId || isNumericOnly ? '' : item}
       </p>
