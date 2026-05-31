@@ -5,6 +5,7 @@ const IMAGE_CACHE = `images-${CACHE_VERSION}`
 const API_CACHE = `api-${CACHE_VERSION}`
 const CACHE_PREFIXES = ['static-', 'app-', 'images-', 'api-']
 const PLAYED_MATCH_SYNC_TAG = 'played-match-sync'
+const LIVE_GAME_NOTIFICATION = 'live-game-notification'
 const DRAFT_DB_NAME = 'lolek-match-drafts'
 const QUEUE_STORE_NAME = 'played-match-sync-queue'
 const META_STORE_NAME = 'metadata'
@@ -257,6 +258,50 @@ self.addEventListener('sync', (event) => {
     }
 
     event.waitUntil(flushQueuedPlayedMatchesFromSw())
+})
+
+self.addEventListener('message', (event) => {
+    const data = event.data || {}
+    if (data.type !== 'LIVE_GAME_NOTIFICATION') {
+        return
+    }
+
+    if (!('showNotification' in self.registration) || Notification.permission !== 'granted') {
+        return
+    }
+
+    const title = data.title || 'LoLek'
+    const body = data.body || 'Live game update'
+    const tag = data.tag || LIVE_GAME_NOTIFICATION
+    const url = data.url || '/'
+
+    event.waitUntil(
+        self.registration.showNotification(title, {
+            body,
+            tag,
+            data: { url },
+            icon: '/manifest.json',
+        }),
+    )
+})
+
+self.addEventListener('notificationclick', (event) => {
+    event.notification.close()
+
+    const targetUrl = event.notification.data?.url || '/'
+
+    event.waitUntil(
+        clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
+            for (const client of clientList) {
+                if ('focus' in client) {
+                    client.focus()
+                    return client.navigate?.(targetUrl) || Promise.resolve()
+                }
+            }
+
+            return clients.openWindow(targetUrl)
+        }),
+    )
 })
 
 self.addEventListener('message', async (event) => {

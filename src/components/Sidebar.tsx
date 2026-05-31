@@ -122,7 +122,7 @@ export function Sidebar({
   }
 
   return (
-    <aside className={`relative overflow-hidden rounded-[28px] border border-white/10 bg-slate-950/75 shadow-[0_0_0_1px_rgba(255,255,255,0.03),0_30px_80px_rgba(3,7,18,0.7)] backdrop-blur-xl transition-all lg:sticky lg:top-6 lg:h-[calc(100vh-3rem)] ${
+    <aside className={`relative overflow-hidden rounded-[28px] border border-white/10 bg-slate-950/75 shadow-[0_0_0_1px_rgba(255,255,255,0.03),0_30px_80px_rgba(3,7,18,0.7)] backdrop-blur-xl transition-all lg:sticky lg:top-6 lg:self-start lg:h-[calc(100vh-3rem)] lg:overflow-y-auto lg:overscroll-contain ${
       isCollapsed ? 'p-3' : 'p-5'
     }`}>
       <div className="absolute inset-x-0 top-0 h-40 bg-[radial-gradient(circle_at_top,_rgba(34,211,238,0.24),_transparent_65%)]" />
@@ -132,9 +132,9 @@ export function Sidebar({
         <div>
           <div className={`flex ${showDetails ? 'items-center justify-between' : 'flex-col items-center gap-3'}`}>
             <div className={`flex ${showDetails ? 'items-center gap-3' : 'flex-col items-center gap-2'}`}>
-              <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-cyan-400 via-sky-500 to-fuchsia-500 text-slate-950 shadow-[0_0_25px_rgba(34,211,238,0.35)]">
-              <LolekIcon />
-            </div>
+              <div className="flex items-center justify-center text-white">
+                <LolekIcon />
+              </div>
               {showDetails ? (
                 <div>
                   <p className="text-sm font-medium uppercase tracking-[0.22em] text-cyan-300/80">
@@ -161,12 +161,14 @@ export function Sidebar({
           </div>
         </div>
 
-        <div className={`rounded-2xl border border-white/10 bg-white/[0.03] p-1 ${showDetails ? '' : 'mx-auto w-full'}`}>
-          <div className="inline-flex w-full rounded-[20px] p-1">
+        <div className={`rounded-2xl border border-white/10 bg-white/[0.03] ${showDetails ? 'p-1' : 'p-2'}`}>
+          <div className={showDetails ? 'inline-flex w-full rounded-[20px] p-1' : 'grid gap-2'}>
             <button
               type="button"
               onClick={() => onSurfaceModeChange('live')}
-              className={`flex-1 rounded-full px-4 py-2 text-xs font-semibold uppercase tracking-[0.24em] transition ${
+              className={`font-semibold uppercase tracking-[0.24em] transition ${
+                showDetails ? 'flex-1 rounded-full px-4 py-2 text-xs' : 'w-full rounded-xl px-3 py-2.5 text-[10px] text-center'
+              } ${
                 surfaceMode === 'live'
                   ? 'bg-cyan-400/15 text-cyan-100 shadow-[0_0_0_1px_rgba(34,211,238,0.12)]'
                   : 'text-slate-400 hover:text-slate-200'
@@ -178,7 +180,9 @@ export function Sidebar({
             <button
               type="button"
               onClick={() => onSurfaceModeChange('manual')}
-              className={`flex-1 rounded-full px-4 py-2 text-xs font-semibold uppercase tracking-[0.24em] transition ${
+              className={`font-semibold uppercase tracking-[0.24em] transition ${
+                showDetails ? 'flex-1 rounded-full px-4 py-2 text-xs' : 'w-full rounded-xl px-3 py-2.5 text-[10px] text-center'
+              } ${
                 surfaceMode === 'manual'
                   ? 'bg-cyan-400/15 text-cyan-100 shadow-[0_0_0_1px_rgba(34,211,238,0.12)]'
                   : 'text-slate-400 hover:text-slate-200'

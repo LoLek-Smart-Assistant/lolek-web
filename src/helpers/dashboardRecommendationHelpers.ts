@@ -27,6 +27,6 @@ export function getRecommendationFromEngine(
           `${recommendationItem.item} (${recommendationItem.score})`,
       ),
     reasoning: [...new Set(reasons)].slice(0, 3),
-    winRateNote: 'Offline semantic recommendation based on enemy champions',
+    winRateNote: 'Offline recommendation based on team and enemy item builds',
   }
 }

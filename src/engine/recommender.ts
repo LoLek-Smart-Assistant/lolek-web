@@ -2,6 +2,34 @@ import type { Item } from '../services'
 import itemService from '../services/itemService'
 import type { ItemScore, MayhemItemEntry, RecommendationResult } from './types'
 
+const ITEM_TAG_COUNTERS: Record<string, string[]> = {
+  armor: ['armor_penetration'],
+  attack_speed: ['anti_attack_speed'],
+  critical_strike: ['anti_crit'],
+  damage: ['armor'],
+  health: ['percent_health_damage'],
+  health_regen: ['anti_healing'],
+  life_steal: ['anti_healing'],
+  magic_resist: ['magic_penetration'],
+  shield: ['anti_shield'],
+  slow: ['anti_slow'],
+  spell_damage: ['magic_resist'],
+  spell_vamp: ['anti_healing'],
+}
+
+const COUNTER_PRIORITY: Record<string, number> = {
+  percent_health_damage: 30,
+  anti_healing: 24,
+  armor_penetration: 22,
+  magic_penetration: 22,
+  anti_shield: 16,
+  anti_crit: 14,
+  anti_attack_speed: 12,
+  anti_slow: 12,
+  armor: 10,
+  magic_resist: 10,
+}
+
 type RecommendItemsOptions = {
   myTeamCurrentItems?: string[]
   enemyCurrentItems?: string[]
@@ -42,15 +70,15 @@ const addUniqueItem = (
   })
 }
 
-const collectEnemyTagCounts = (
-  enemyCurrentItems: string[],
+const collectItemTagCounts = (
+  currentItems: string[],
   itemsCatalog?: Record<string, Item> | null,
 ) => {
   const tagCounts: Record<string, number> = {}
 
-  for (const enemyItemName of enemyCurrentItems) {
-    const meta = resolveCatalogItem(enemyItemName, itemsCatalog)
-    const tags = (meta?.customTags ?? []).map((tag) => tag.toLowerCase())
+  for (const itemName of currentItems) {
+    const meta = resolveCatalogItem(itemName, itemsCatalog)
+    const tags = (meta?.tags ?? []).map((tag) => tag.toLowerCase())
 
     for (const tag of tags) {
       tagCounts[tag] = (tagCounts[tag] ?? 0) + 1
@@ -68,7 +96,7 @@ const collectTeamTagCounts = (
 
   for (const teamItemName of teamCurrentItems) {
     const meta = resolveCatalogItem(teamItemName, itemsCatalog)
-    const tags = (meta?.customTags ?? []).map((tag) => tag.toLowerCase())
+    const tags = (meta?.tags ?? []).map((tag) => tag.toLowerCase())
 
     for (const tag of tags) {
       tagCounts[tag] = (tagCounts[tag] ?? 0) + 1
@@ -93,15 +121,55 @@ const scoreSuggestedItem = (
     ),
   )
 
-  const enemyScore = tags.reduce((total, tag) => total + (enemyTagCounts[tag] ?? 0), 0)
+  let bestReason = 'Mayhem suggested item'
+  let bestScore = 0
+
+  for (const counterTag of tags) {
+    const supportedEnemyTags = Object.entries(ITEM_TAG_COUNTERS)
+      .filter(([, counters]) => counters.includes(counterTag))
+      .map(([enemyTag]) => enemyTag)
+
+    for (const enemyTag of supportedEnemyTags) {
+      const enemyCount = enemyTagCounts[enemyTag] ?? 0
+      if (enemyCount === 0) {
+        continue
+      }
+
+      const teamCount = teamTagCounts[counterTag] ?? 0
+      const counterPriority = COUNTER_PRIORITY[counterTag] ?? 8
+      let score = enemyCount * counterPriority
+
+      if (enemyCount >= 2) {
+        score += 8
+      }
+
+      if (enemyCount >= 3) {
+        score += 10
+      }
+
+      if (teamCount > 0) {
+        score -= Math.min(10, teamCount * 4)
+      }
+
+      if (score > bestScore) {
+        bestScore = score
+        bestReason = `Counters enemy ${enemyTag.replace(/_/g, ' ')} stack (${enemyCount})`
+        if (teamCount > 0) {
+          bestReason += `; your team already has ${teamCount} similar item${teamCount === 1 ? '' : 's'}`
+        }
+      }
+    }
+  }
+
+  const enemyScore = tags.reduce((total, tag) => {
+    const supportedEnemyTags = Object.entries(ITEM_TAG_COUNTERS).filter(([, counters]) => counters.includes(tag))
+    return total + supportedEnemyTags.reduce((tagTotal, [enemyTag]) => tagTotal + (enemyTagCounts[enemyTag] ?? 0), 0)
+  }, 0)
   const teamScore = tags.reduce((total, tag) => total + (teamTagCounts[tag] ?? 0), 0)
   return {
     item: meta?.itemName ?? item.item,
-    score: 100 + enemyScore * 10 + teamScore * 4,
-    reasons:
-      enemyScore > 0 || teamScore > 0
-        ? [`Mayhem suggested item`, `Matches enemy tags: ${tags.join(', ')}`]
-        : ['Mayhem suggested item'],
+    score: 100 + bestScore + enemyScore * 2 - teamScore * 3,
+    reasons: bestScore > 0 ? [bestReason] : ['Mayhem suggested item'],
     image: meta?.image ?? item.image ?? null,
   }
 }
@@ -114,7 +182,7 @@ export const recommendItems = (
 ): RecommendationResult => {
   const itemsCatalog = itemService.getCachedItems()
   const teamTagCounts = collectTeamTagCounts(options.myTeamCurrentItems ?? [], itemsCatalog)
-  const enemyTagCounts = collectEnemyTagCounts(options.enemyCurrentItems ?? [], itemsCatalog)
+  const enemyTagCounts = collectItemTagCounts(options.enemyCurrentItems ?? [], itemsCatalog)
 
   const featured: ItemScore[] = []
   const seen = new Set<string>()
@@ -155,6 +223,8 @@ export const recommendItems = (
     }
   }
 
+  const remainingSlots = Math.max(0, limit - featured.length)
+  const suggestedLimit = Math.min(3, remainingSlots)
   const suggested = (options.mayhemSuggestedItems ?? [])
     .map((entry) => scoreSuggestedItem(entry, teamTagCounts, enemyTagCounts, itemsCatalog))
     .filter((entry) => !seen.has(normalizeItemKey(entry.item)))
@@ -165,6 +235,7 @@ export const recommendItems = (
 
       return left.item.localeCompare(right.item)
     })
+    .slice(0, suggestedLimit)
 
   for (const entry of suggested) {
     addUniqueItem(featured, seen, entry.item, entry.score, entry.reasons[0], entry.image)

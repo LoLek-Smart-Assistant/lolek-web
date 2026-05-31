@@ -124,7 +124,37 @@ export function DashboardScreen() {
   } | null>(null)
   const lastProcessedResponseRef = useRef<string | null>(null)
   const mayhemFetchedGameKeyRef = useRef<string | null>(null)
+  const activeLiveGameKeyRef = useRef<string | null>(null)
   const timeoutRef = useRef<number | null>(null)
+
+  const postLiveGameNotification = useCallback(async (payload: {
+    variant: 'started' | 'ended'
+    liveGameKey: string
+  }) => {
+    if (
+      typeof window === 'undefined' ||
+      !('serviceWorker' in navigator)
+    ) {
+      return
+    }
+
+    try {
+      const registration = await navigator.serviceWorker.ready
+      registration.active?.postMessage({
+        type: 'LIVE_GAME_NOTIFICATION',
+        title: 'LoLek',
+        body:
+          payload.variant === 'started'
+            ? `Live game for ${connectedRiotId}${connectedTagline ? `#${connectedTagline}` : ''} started`
+            : `Live game for ${connectedRiotId}${connectedTagline ? `#${connectedTagline}` : ''} ended`,
+        tag: `lolek-live-game-${payload.variant}-${payload.liveGameKey}`,
+        url: '/',
+      })
+    } catch (error) {
+      console.error('Failed to post live game notification to service worker:', error)
+    }
+  }, [connectedRiotId, connectedTagline])
+
   const syncProfileFromApi = async () => {
     try {
       const profileResponse = await userService.getProfile()
@@ -197,6 +227,13 @@ export function DashboardScreen() {
             message.type === 'live-game-summary' &&
             message.status === 'waiting'
           ) {
+            if (activeLiveGameKeyRef.current) {
+              void postLiveGameNotification({
+                variant: 'ended',
+                liveGameKey: activeLiveGameKeyRef.current,
+              })
+              activeLiveGameKeyRef.current = null
+            }
             setLiveGameSummary(null)
             setLiveGameMessage(message.message || 'No active game found yet.')
             return
@@ -208,9 +245,25 @@ export function DashboardScreen() {
             console.log('Live game websocket summary data:', liveData)
             setLiveGameMessage(null)
             setLiveGameSummary(liveData)
+
+            const liveGameKey = String(liveData.gameStartTime ?? '')
+            if (liveGameKey && activeLiveGameKeyRef.current !== liveGameKey) {
+              activeLiveGameKeyRef.current = liveGameKey
+              void postLiveGameNotification({
+                variant: 'started',
+                liveGameKey,
+              })
+            }
           }
 
           if (message.type === 'not-in-game' || message.type === 'error') {
+            if (message.type === 'not-in-game' && activeLiveGameKeyRef.current) {
+              void postLiveGameNotification({
+                variant: 'ended',
+                liveGameKey: activeLiveGameKeyRef.current,
+              })
+              activeLiveGameKeyRef.current = null
+            }
             setLiveGameSummary(null)
             setLiveGameMessage(message.message)
           }
@@ -224,7 +277,7 @@ export function DashboardScreen() {
     return () => {
       socket.close()
     }
-  }, [isRiotConnected, connectedPlatform, connectedRiotId, connectedTagline])
+  }, [isRiotConnected, connectedPlatform, connectedRiotId, connectedTagline, postLiveGameNotification])
 
   useEffect(() => {
     const baseDuration =
@@ -281,6 +334,7 @@ export function DashboardScreen() {
       setConnectedPlatform(platform)
       setIsRiotConnected(true)
       setIsEditingRiotProfile(false)
+
     } catch (error) {
       console.error('Riot link error:', error)
       setIsRiotConnected(false)
@@ -313,6 +367,7 @@ export function DashboardScreen() {
     setLiveGameSummary(null)
     setLiveGameMessage(null)
     setIsEditingRiotProfile(false)
+    activeLiveGameKeyRef.current = null
   }
 
   const handleRiotIdChange = (value: string) => {
@@ -340,6 +395,7 @@ export function DashboardScreen() {
       setConnectedPlatform('EUW1')
       setRiotId('')
       setTagline('')
+      activeLiveGameKeyRef.current = null
     } catch (error) {
       console.error('Riot disconnect error:', error)
     } finally {
@@ -699,6 +755,7 @@ export function DashboardScreen() {
     liveGameMessage ||
     (isRiotConnected && !liveGameSummary ? 'Waiting for live game data.' : null)
   const isLoggedIn = Boolean(username)
+  const showVoiceSidebar = isLoggedIn && surfaceMode !== 'manual'
   const shouldShowNoRiotPanel = isLoggedIn && !isRiotConnected
   const shouldShowMiddleSkeleton =
     isLoggedIn && isRiotConnected && (isConnecting || isRemovingRiotProfile)
@@ -881,7 +938,11 @@ export function DashboardScreen() {
   return (
     <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(8,145,178,0.16),_transparent_28%),radial-gradient(circle_at_top_right,_rgba(168,85,247,0.14),_transparent_26%),linear-gradient(180deg,_#020617_0%,_#0f172a_45%,_#020617_100%)] px-4 py-4 text-white sm:px-6 lg:px-6">
       <div
-        className="mx-auto grid max-w-[1840px] gap-6 xl:grid-cols-[var(--sidebar-width)_minmax(0,1fr)_260px]"
+        className={`mx-auto grid max-w-[1840px] gap-6 lg:h-[calc(100vh-2rem)] lg:items-start lg:overflow-hidden ${
+          showVoiceSidebar
+            ? 'lg:grid-cols-[var(--sidebar-width)_minmax(0,1fr)_260px]'
+            : 'lg:grid-cols-[var(--sidebar-width)_minmax(0,1fr)]'
+        } [overflow-anchor:none]`}
         style={
           {
             '--sidebar-width': isSidebarCollapsed ? '96px' : '300px',
@@ -929,7 +990,7 @@ export function DashboardScreen() {
           onLogout={handleLogout}
         />
 
-        <main className={`space-y-6 ${!isLoggedIn || surfaceMode === 'manual' ? 'xl:col-span-2' : ''}`}>
+        <main className="min-w-0 space-y-6 [overflow-anchor:none] lg:h-full lg:min-h-0 lg:overflow-y-auto lg:overflow-x-hidden lg:pr-1">
           {!isLoggedIn ? surfaceMode === 'manual' ? (
             <ManualMatchEditor canSyncToBackend={false} teamTemplates={manualTeamTemplates} />
           ) : (
@@ -991,7 +1052,17 @@ export function DashboardScreen() {
                                 onClick={() => handleSelectItemFromModal(item)}
                                 className="mb-1 flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left hover:bg-white/5"
                               >
-                                <div className="flex h-8 w-8 items-center justify-center rounded bg-white/5 text-xs text-white">{item.itemName?.slice(0,2)}</div>
+                                {item.image ? (
+                                  <img
+                                    src={item.image}
+                                    alt={item.itemName}
+                                    className="h-8 w-8 rounded object-cover ring-1 ring-white/10"
+                                  />
+                                ) : (
+                                  <div className="flex h-8 w-8 items-center justify-center rounded bg-white/5 text-xs text-white">
+                                    {item.itemName?.slice(0, 2)}
+                                  </div>
+                                )}
                                 <div className="flex-1 text-sm text-slate-200">{item.itemName}</div>
                                 <div className="text-xs text-slate-400">{item.itemId}</div>
                               </button>
@@ -1016,7 +1087,7 @@ export function DashboardScreen() {
           )}
         </main>
 
-        {isLoggedIn && surfaceMode !== 'manual' ? (
+        {showVoiceSidebar ? (
           <aside className="relative overflow-hidden rounded-[28px] border border-white/10 bg-slate-950/75 p-5 shadow-[0_0_0_1px_rgba(255,255,255,0.03),0_30px_80px_rgba(3,7,18,0.7)] backdrop-blur-xl xl:sticky xl:top-6 xl:h-[calc(100vh-3rem)]">
             <div className="absolute inset-x-0 top-0 h-40 bg-[radial-gradient(circle_at_top,_rgba(34,211,238,0.24),_transparent_65%)]" />
             <div className="absolute -left-10 top-24 h-28 w-28 rounded-full bg-fuchsia-500/20 blur-3xl" />

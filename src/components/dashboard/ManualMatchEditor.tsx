@@ -525,7 +525,7 @@ export function ManualMatchEditor({ onSaved, canSyncToBackend = true }: ManualMa
             <p className="text-xs uppercase tracking-[0.2em] text-cyan-300/80">Manual match</p>
             <h3 className="mt-1 text-2xl font-semibold text-white">Build and save a finished game</h3>
             <p className="mt-2 max-w-2xl text-sm text-slate-400">
-              Same live-style layout, but editable. Draft changes are stored locally in IndexedDB as you type.
+              Manually enter match details like teams, players, champions, and items to save it to your match history.
             </p>
           </div>
 

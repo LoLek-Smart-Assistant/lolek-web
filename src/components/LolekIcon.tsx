@@ -1,12 +1,12 @@
 export function LolekIcon() {
   return (
     <svg
-      width="24"
-      height="24"
+      width="32"
+      height="32"
       viewBox="0 0 24 24"
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
-      className="h-6 w-6"
+      className="h-8 w-8"
     >
       <path
         fillRule="evenodd"
