@@ -929,7 +929,7 @@ export function DashboardScreen() {
           onLogout={handleLogout}
         />
 
-        <main className={`space-y-6 ${!isLoggedIn ? 'xl:col-span-2' : ''}`}>
+        <main className={`space-y-6 ${!isLoggedIn || surfaceMode === 'manual' ? 'xl:col-span-2' : ''}`}>
           {!isLoggedIn ? surfaceMode === 'manual' ? (
             <ManualMatchEditor canSyncToBackend={false} teamTemplates={manualTeamTemplates} />
           ) : (
