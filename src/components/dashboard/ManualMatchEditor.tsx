@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { isAxiosError } from 'axios'
-import { Check, LoaderCircle, Plus, Search, Save } from 'lucide-react'
+import { LoaderCircle, Plus, Save } from 'lucide-react'
 
 import { MatchStatusCard } from '../../components/MatchStatusCard'
 import type { Team } from '../../data/mockRiot'
@@ -126,20 +126,23 @@ type ManualMatchEditorProps = {
   teamTemplates?: Team[]
 }
 
-function createInitialDraft(teamTemplates: Team[] = []): ManualMatchDraft {
+function createDefaultPlayers(start: number, end: number): ManualPlayerDraft[] {
+  return Array.from({ length: end - start + 1 }).map((_, index) => {
+    const playerNumber = start + index
+    return {
+      summonerName: `Player ${playerNumber}`,
+      riotId: '',
+      championName: '',
+      role: '',
+      teamPosition: '',
+      championId: '',
+      items: [],
+    }
+  })
+}
+
+function createInitialDraft(): ManualMatchDraft {
   const matchId = globalThis.crypto?.randomUUID?.() ?? `manual-${Date.now()}`
-  const teams = teamTemplates.length ? teamTemplates : [
-    {
-      name: 'Blue Team',
-      side: 'blue' as const,
-      players: [],
-    },
-    {
-      name: 'Red Team',
-      side: 'red' as const,
-      players: [],
-    },
-  ]
 
   return {
     matchId,
@@ -149,22 +152,23 @@ function createInitialDraft(teamTemplates: Team[] = []): ManualMatchDraft {
     durationSeconds: 0,
     startedAt: null,
     endedAt: null,
-    winnerTeamId: teams[0]?.side ?? 'blue',
-    teams: teams.map((team) => ({
-      teamId: team.side,
-      side: team.side,
-      name: team.name,
-      won: team.side === 'blue',
-      players: team.players.map((player) => ({
-        summonerName: player.summonerName,
-        riotId: '',
-        championName: player.champion,
-        role: player.role,
-        teamPosition: player.role,
-        championId: '',
-        items: [...player.currentItems, ...player.predictedItems].slice(0, 6),
-      })),
-    })),
+    winnerTeamId: 'blue',
+    teams: [
+      {
+        teamId: 'blue',
+        side: 'blue',
+        name: 'Blue Team',
+        won: true,
+        players: createDefaultPlayers(1, 5),
+      },
+      {
+        teamId: 'red',
+        side: 'red',
+        name: 'Red Team',
+        won: false,
+        players: createDefaultPlayers(6, 10),
+      },
+    ],
   }
 }
 
@@ -179,11 +183,37 @@ function normalizeText(value: string) {
   return value.trim()
 }
 
-export function ManualMatchEditor({ onSaved, canSyncToBackend = true, teamTemplates = [] }: ManualMatchEditorProps) {
-  const createDraft = () => createInitialDraft(teamTemplates)
+async function fetchChampionNamesFromDDragon(): Promise<string[]> {
+  try {
+    const versionsResponse = await fetch('https://ddragon.leagueoflegends.com/api/versions.json')
+    if (!versionsResponse.ok) return []
+    const versions = (await versionsResponse.json()) as string[]
+    const version = versions?.[0]
+    if (!version) return []
+
+    const championResponse = await fetch(
+      `https://ddragon.leagueoflegends.com/cdn/${version}/data/en_US/champion.json`,
+    )
+    if (!championResponse.ok) return []
+
+    const championPayload = await championResponse.json()
+    const values = Object.values(championPayload?.data ?? {}) as Array<{ name?: string }>
+    return values
+      .map((entry) => (typeof entry?.name === 'string' ? entry.name.trim() : ''))
+      .filter(Boolean)
+      .sort((a, b) => a.localeCompare(b))
+  } catch {
+    return []
+  }
+}
+
+export function ManualMatchEditor({ onSaved, canSyncToBackend = true, teamTemplates: _teamTemplates = [] }: ManualMatchEditorProps) {
+  const createDraft = () => createInitialDraft()
   const [draft, setDraft] = useState<ManualMatchDraft>(createDraft)
   const [items, setItems] = useState<Item[]>([])
+  const [champions, setChampions] = useState<string[]>([])
   const [itemSearch, setItemSearch] = useState('')
+  const [championSearch, setChampionSearch] = useState('')
   const [selectedTeamIndex, setSelectedTeamIndex] = useState(0)
   const [selectedPlayerIndex, setSelectedPlayerIndex] = useState(0)
   const [isLoadingDraft, setIsLoadingDraft] = useState(true)
@@ -194,21 +224,30 @@ export function ManualMatchEditor({ onSaved, canSyncToBackend = true, teamTempla
     playerIndex: number
     slotIndex: number
   } | null>(null)
+  const [addChampionModalTarget, setAddChampionModalTarget] = useState<{
+    teamIndex: number
+    playerIndex: number
+  } | null>(null)
 
   useEffect(() => {
     let active = true
 
     const load = async () => {
       try {
-        const [cachedDraft, loadedItems] = await Promise.all([
+        const [cachedDraft, loadedItems, loadedChampions] = await Promise.all([
           loadPlayedMatchDraft(DRAFT_KEY).catch(() => null),
           itemService.fetchItems().catch(() => []),
+          fetchChampionNamesFromDDragon(),
         ])
 
         if (!active) return
 
         if (loadedItems?.length) {
           setItems(loadedItems)
+        }
+
+        if (loadedChampions?.length) {
+          setChampions(loadedChampions)
         }
 
         if (cachedDraft) {
@@ -267,8 +306,11 @@ export function ManualMatchEditor({ onSaved, canSyncToBackend = true, teamTempla
     })
   }, [itemSearch, items])
 
-  const activeTeam = draft.teams[selectedTeamIndex]
-  const activePlayer = activeTeam?.players[selectedPlayerIndex]
+  const filteredChampions = useMemo(() => {
+    const query = championSearch.trim().toLowerCase()
+    if (!query) return champions.slice(0, 30)
+    return champions.filter((champion) => champion.toLowerCase().includes(query)).slice(0, 30)
+  }, [championSearch, champions])
 
   const updateDraft = (updater: (current: ManualMatchDraft) => ManualMatchDraft) => {
     setDraft((current) => updater(current))
@@ -290,20 +332,6 @@ export function ManualMatchEditor({ onSaved, canSyncToBackend = true, teamTempla
       ...team,
       players: team.players.map((player, index) => (index === playerIndex ? updater(player) : player)),
     }))
-  }
-
-  const handleAddItem = (item: Item) => {
-    if (!activeTeam || !activePlayer) return
-
-    const itemName = item.itemName || item.itemId
-
-    updatePlayer(selectedTeamIndex, selectedPlayerIndex, (player) => {
-      if (player.items.some((item) => item.toLowerCase() === itemName.toLowerCase())) {
-        return player
-      }
-
-      return { ...player, items: [...player.items, itemName].slice(0, 6) }
-    })
   }
 
   const handleRemoveItem = (teamIndex: number, playerIndex: number, itemIndex: number) => {
@@ -333,10 +361,29 @@ export function ManualMatchEditor({ onSaved, canSyncToBackend = true, teamTempla
 
   const closeAddItemModal = () => setAddItemModalTarget(null)
 
+  const openAddChampionModal = (teamIndex: number, playerIndex: number) => {
+    setSelectedTeamIndex(teamIndex)
+    setSelectedPlayerIndex(playerIndex)
+    setAddChampionModalTarget({ teamIndex, playerIndex })
+    setChampionSearch('')
+  }
+
+  const closeAddChampionModal = () => setAddChampionModalTarget(null)
+
   const handleSelectItemFromModal = (item: Item) => {
     if (!addItemModalTarget) return
     insertItemAtSlot(addItemModalTarget.teamIndex, addItemModalTarget.playerIndex, addItemModalTarget.slotIndex, item)
     closeAddItemModal()
+  }
+
+  const handleSelectChampionFromModal = (championName: string) => {
+    if (!addChampionModalTarget) return
+    updatePlayer(addChampionModalTarget.teamIndex, addChampionModalTarget.playerIndex, (player) => ({
+      ...player,
+      championName,
+      championId: '',
+    }))
+    closeAddChampionModal()
   }
 
   const handleSave = async () => {
@@ -518,9 +565,6 @@ export function ManualMatchEditor({ onSaved, canSyncToBackend = true, teamTempla
               teamIndex={teamIndex}
               selectedTeamIndex={selectedTeamIndex}
               selectedPlayerIndex={selectedPlayerIndex}
-              filteredItems={filteredItems}
-              itemSearch={itemSearch}
-              items={items}
               onSelectPlayer={(playerIndex) => {
                 setSelectedTeamIndex(teamIndex)
                 setSelectedPlayerIndex(playerIndex)
@@ -537,8 +581,7 @@ export function ManualMatchEditor({ onSaved, canSyncToBackend = true, teamTempla
               }
               onUpdatePlayer={(playerIndex, updater) => updatePlayer(teamIndex, playerIndex, updater)}
               onRemoveItem={(playerIndex, itemIndex) => handleRemoveItem(teamIndex, playerIndex, itemIndex)}
-              onAddItem={handleAddItem}
-              onItemSearchChange={setItemSearch}
+              onOpenChampionAdd={openAddChampionModal}
               onOpenAdd={openAddItemModal}
             />
           ))}
@@ -594,6 +637,40 @@ export function ManualMatchEditor({ onSaved, canSyncToBackend = true, teamTempla
             </div>
           </div>
         ) : null}
+        {addChampionModalTarget ? (
+          <div className="fixed inset-0 z-50 flex items-start justify-center p-6">
+            <div className="absolute inset-0 bg-black/60" onClick={closeAddChampionModal} />
+            <div className="relative z-10 w-full max-w-2xl rounded-2xl bg-slate-900/95 p-4 shadow-2xl">
+              <div className="mb-3 flex items-center justify-between">
+                <h4 className="text-sm font-semibold text-white">Select champion</h4>
+                <button type="button" onClick={closeAddChampionModal} className="text-slate-400 hover:text-slate-200">Close</button>
+              </div>
+              <div className="mb-2">
+                <input
+                  value={championSearch}
+                  onChange={(e) => setChampionSearch(e.target.value)}
+                  placeholder="Search champion by name"
+                  className="w-full rounded-lg border border-white/10 bg-slate-950/80 px-3 py-2 text-sm text-white outline-none"
+                />
+              </div>
+              <div className="max-h-72 overflow-auto">
+                {filteredChampions.map((champion) => (
+                  <button
+                    key={champion}
+                    type="button"
+                    onClick={() => handleSelectChampionFromModal(champion)}
+                    className="mb-1 flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left hover:bg-white/5"
+                  >
+                    <div className="flex h-8 w-8 items-center justify-center rounded bg-white/5 text-xs text-white">
+                      {champion.slice(0, 2).toUpperCase()}
+                    </div>
+                    <div className="flex-1 text-sm text-slate-200">{champion}</div>
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        ) : null}
       </div>
     </section>
   )
@@ -604,9 +681,6 @@ type ManualTeamPanelProps = {
   teamIndex: number
   selectedTeamIndex: number
   selectedPlayerIndex: number
-  filteredItems: Item[]
-  itemSearch: string
-  items: Item[]
   onSelectPlayer: (playerIndex: number) => void
   onSetWinner: () => void
   onUpdatePlayer: (
@@ -614,8 +688,7 @@ type ManualTeamPanelProps = {
     updater: (player: ManualPlayerDraft) => ManualPlayerDraft,
   ) => void
   onRemoveItem: (playerIndex: number, itemIndex: number) => void
-  onAddItem: (item: Item) => void
-  onItemSearchChange: (value: string) => void
+  onOpenChampionAdd?: (teamIndex: number, playerIndex: number) => void
   onOpenAdd?: (teamIndex: number, playerIndex: number, slotIndex: number) => void
 }
 
@@ -624,14 +697,11 @@ function ManualTeamPanel({
   teamIndex,
   selectedTeamIndex,
   selectedPlayerIndex,
-  filteredItems,
-  itemSearch,
   onSelectPlayer,
   onSetWinner,
   onUpdatePlayer,
   onRemoveItem,
-  onAddItem,
-  onItemSearchChange,
+  onOpenChampionAdd,
   onOpenAdd,
 }: ManualTeamPanelProps) {
   const accent =
@@ -664,13 +734,10 @@ function ManualTeamPanel({
             player={player}
             teamIndex={teamIndex}
             isSelected={teamIndex === selectedTeamIndex && playerIndex === selectedPlayerIndex}
-            filteredItems={filteredItems}
-            itemSearch={itemSearch}
             onSelect={() => onSelectPlayer(playerIndex)}
             onUpdate={(updater) => onUpdatePlayer(playerIndex, updater)}
             onRemoveItem={(itemIndex) => onRemoveItem(playerIndex, itemIndex)}
-            onAddItem={onAddItem}
-            onItemSearchChange={onItemSearchChange}
+            onOpenChampionAdd={() => onOpenChampionAdd?.(teamIndex, playerIndex)}
             onOpenAdd={(slotIndex) => onOpenAdd?.(teamIndex, playerIndex, slotIndex)}
           />
         ))}
@@ -682,27 +749,21 @@ function ManualTeamPanel({
 type ManualPlayerCardProps = {
   player: ManualPlayerDraft
   isSelected: boolean
-  filteredItems: Item[]
-  itemSearch: string
   onSelect: () => void
   onUpdate: (updater: (player: ManualPlayerDraft) => ManualPlayerDraft) => void
   onRemoveItem: (itemIndex: number) => void
-  onAddItem: (item: Item) => void
-  onItemSearchChange: (value: string) => void
   teamIndex?: number
+  onOpenChampionAdd?: () => void
   onOpenAdd?: (slotIndex: number) => void
 }
 
 function ManualPlayerCard({
   player,
   isSelected,
-  filteredItems,
-  itemSearch,
   onSelect,
   onUpdate,
   onRemoveItem,
-  onAddItem,
-  onItemSearchChange,
+  onOpenChampionAdd,
   onOpenAdd,
 }: ManualPlayerCardProps) {
   const championInitials = (player.championName || '??').slice(0, 2).toUpperCase()
@@ -720,8 +781,21 @@ function ManualPlayerCard({
     >
       <div className="grid min-w-0 gap-3 lg:grid-cols-[140px_minmax(0,1fr)] lg:items-center">
         <div className="flex min-w-0 items-center gap-3">
-          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-cyan-400 to-blue-500 text-[10px] font-semibold text-slate-950 shadow-[0_0_20px_rgba(56,189,248,0.22)] ring-2 ring-white/10">
-            {championInitials}
+          <div className="relative h-11 w-11 shrink-0">
+            <div className="flex h-11 w-11 items-center justify-center rounded-full bg-gradient-to-br from-cyan-400 to-blue-500 text-[10px] font-semibold text-slate-950 shadow-[0_0_20px_rgba(56,189,248,0.22)] ring-2 ring-white/10">
+              {championInitials}
+            </div>
+            <button
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation()
+                onOpenChampionAdd?.()
+              }}
+              className="absolute -top-1 -right-1 inline-flex h-5 w-5 items-center justify-center rounded-full border border-white/15 bg-slate-950/95 text-cyan-200 shadow-[0_6px_18px_rgba(15,23,42,0.45)] transition hover:scale-110 hover:text-cyan-100"
+              aria-label="Select champion"
+            >
+              <Plus className="h-3 w-3" />
+            </button>
           </div>
 
           <div className="min-w-0 flex-1 space-y-1">
@@ -744,19 +818,6 @@ function ManualPlayerCard({
               placeholder="Champion"
               className="w-full truncate bg-transparent text-[11px] text-slate-300 outline-none placeholder:text-slate-500"
             />
-            <input
-              value={player.role}
-              onChange={(event) =>
-                onUpdate((current) => ({
-                  ...current,
-                  role: event.target.value,
-                  teamPosition: event.target.value,
-                }))
-              }
-              onClick={(event) => event.stopPropagation()}
-              placeholder="Role"
-              className="w-full bg-transparent text-[10px] uppercase tracking-[0.14em] text-slate-500 outline-none placeholder:text-slate-600"
-            />
           </div>
         </div>
 
@@ -764,59 +825,6 @@ function ManualPlayerCard({
           <ManualItemStrip items={player.items} onRemoveItem={onRemoveItem} onOpenAdd={onOpenAdd} />
         </div>
       </div>
-
-      {isSelected ? (
-        <div className="mt-3 rounded-2xl border border-dashed border-cyan-400/25 bg-cyan-400/6 p-3" onClick={(event) => event.stopPropagation()}>
-          <div className="flex items-center gap-2 text-xs uppercase tracking-[0.16em] text-cyan-200/80">
-            <Search className="h-4 w-4" />
-            Search items for this player
-          </div>
-          <input
-            value={itemSearch}
-            onChange={(event) => onItemSearchChange(event.target.value)}
-            placeholder="Search by name, tag, or custom tag"
-            className="mt-2 w-full rounded-xl border border-white/10 bg-slate-950/80 px-3 py-2 text-sm text-white outline-none"
-          />
-          <div className="mt-3 grid max-h-52 grid-cols-1 gap-2 overflow-y-auto pr-1 sm:grid-cols-2">
-            {filteredItems.map((item) => {
-              const normalized = item.itemName?.trim() || item.itemId
-              const alreadyBuilt = player.items.some(
-                (builtItem) => builtItem.toLowerCase() === normalized.toLowerCase(),
-              )
-
-              return (
-                <button
-                  key={item._id}
-                  type="button"
-                  onClick={(event) => {
-                    event.stopPropagation()
-                    onAddItem(item)
-                  }}
-                  disabled={alreadyBuilt}
-                  className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/[0.03] px-3 py-2 text-left transition hover:border-cyan-400/20 hover:bg-white/[0.06] disabled:cursor-default disabled:opacity-60"
-                >
-                  {item.image ? (
-                    <img src={item.image} alt={item.itemName} className="h-10 w-10 rounded-xl object-cover" />
-                  ) : (
-                    <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-900 text-[10px] text-slate-500">
-                      {item.itemId}
-                    </div>
-                  )}
-                  <div className="min-w-0 flex-1">
-                    <div className="truncate text-sm font-semibold text-white">{item.itemName}</div>
-                    <div className="truncate text-[11px] text-slate-400">
-                      {(item.customTags ?? item.tags ?? []).join(' · ')}
-                    </div>
-                  </div>
-                  <span className="text-xs text-cyan-200">
-                    {alreadyBuilt ? <Check className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
-                  </span>
-                </button>
-              )
-            })}
-          </div>
-        </div>
-      ) : null}
     </article>
   )
 }
@@ -832,6 +840,14 @@ function ManualItemStrip({ items, onRemoveItem, onOpenAdd }: ManualItemStripProp
       <div className="grid w-full grid-cols-6 gap-2">
         {Array.from({ length: 6 }).map((_, slotIndex) => {
           const item = items[slotIndex] ?? null
+          const itemMeta = item ? itemService.getItemByName?.(item) : undefined
+          const itemImage = itemMeta?.image ?? null
+          const itemCode = (item ?? '')
+            .split(' ')
+            .map((part) => part[0])
+            .join('')
+            .slice(0, 2)
+            .toUpperCase()
 
           return (
             <div key={`${item || 'empty'}-${slotIndex}`} className="group mx-auto w-[45px] text-center">
@@ -843,7 +859,11 @@ function ManualItemStrip({ items, onRemoveItem, onOpenAdd }: ManualItemStripProp
                       : 'border-white/10 bg-[radial-gradient(circle_at_top,_rgba(34,211,238,0.16),_rgba(15,23,42,0.92))] text-slate-100'
                   }`}
                 >
-                  {item ?? ''}
+                  {itemImage ? (
+                    <img src={itemImage} alt={item ?? ''} className="h-full w-full rounded-lg object-cover" />
+                  ) : (
+                    itemCode
+                  )}
                 </div>
                 {item ? (
                 <button

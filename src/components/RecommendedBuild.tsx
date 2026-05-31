@@ -73,13 +73,15 @@ export function RecommendedBuild({
           <div className="grid gap-4">
             <div className="rounded-[26px] border border-amber-400/20 bg-black/20 p-4 shadow-[0_0_35px_rgba(251,191,36,0.08)]">
               <div className="flex min-w-0 flex-col gap-3 xl:flex-row xl:items-center">
-                <div className="flex min-w-0 items-center gap-3 xl:w-56">
+                <div className="flex h-18 min-w-18 items-center gap-3 xl:w-56">
                   {recommendation.championImage ? (
-                    <img
-                      src={recommendation.championImage}
-                      alt={recommendation.champion}
-                      className="h-18 w-18 shrink-0 rounded-full object-cover ring-2 ring-amber-200/20"
-                    />
+                    <div className="h-18 w-18 overflow-hidden rounded-full shadow-[0_0_20px_rgba(251,191,36,0.12)] ring-2 ring-amber-200/20">
+                      <img
+                        src={recommendation.championImage}
+                        alt={recommendation.champion}
+                        className="block h-full w-full scale-110 object-cover object-center"
+                      />
+                    </div>
                   ) : (
                     <div className="flex h-18 w-18 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-amber-300 via-orange-400 to-orange-500 text-xl font-semibold text-slate-950 ring-2 ring-amber-200/20">
                       {recommendation.champion.slice(0, 2).toUpperCase()}
@@ -216,9 +218,11 @@ function RecommendedItemTile({
     .slice(0, 2)
     .toUpperCase()
 
-  const image =
-    (item ? itemService.getItemByKey(item)?.image ?? itemService.getItemByName?.(item)?.image : undefined) ??
-    undefined
+  const itemMeta = item
+    ? itemService.getItemByKey(item) ?? itemService.getItemByName?.(item)
+    : undefined
+  const image = itemMeta?.image ?? undefined
+  const itemDescription = itemMeta?.description?.trim() || undefined
 
   const handleClick = () => {
     if (item) {
@@ -281,6 +285,11 @@ function RecommendedItemTile({
             <span className="absolute left-1/2 top-1/2 h-0.5 w-2.5 -translate-x-1/2 -translate-y-1/2 -rotate-45 rounded-full bg-current" />
           </span>
         </button>
+      ) : null}
+      {itemDescription ? (
+        <div className="pointer-events-none absolute left-1/2 top-full z-30 mt-2 w-60 -translate-x-1/2 rounded-lg border border-white/15 bg-slate-950/95 px-2.5 py-2 text-left text-[10px] leading-4 text-slate-100 opacity-0 shadow-[0_10px_25px_rgba(15,23,42,0.55)] transition-opacity duration-150 group-hover:opacity-100">
+          {itemDescription}
+        </div>
       ) : null}
       <p className="mt-1 truncate text-[8px] leading-3 text-slate-400">{item ?? ''}</p>
     </div>
