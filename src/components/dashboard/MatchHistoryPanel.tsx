@@ -13,6 +13,20 @@ type MatchHistoryPanelProps = {
     matchId?: string
     playedAt?: string
     team?: string
+    teamBuilds?: Array<{
+      teamId: string
+      teamName: string
+      won: boolean
+      players: Array<{
+        champion: string
+        championImage?: string
+        player: string
+        items: Array<{
+          name: string
+          image?: string
+        }>
+      }>
+    }>
   }>
 }
 
@@ -69,6 +83,71 @@ export function MatchHistoryPanel({ entries }: MatchHistoryPanelProps) {
               </div>
             ) : null}
             {entry.matchId ? <div className="text-xs text-slate-500">Match ID: {entry.matchId}</div> : null}
+            {entry.teamBuilds?.length ? (
+              <div className="mt-1 rounded-xl border border-white/10 bg-slate-950/55 p-3">
+                <div className="mb-2 text-[11px] uppercase tracking-[0.16em] text-slate-400">
+                  Champion Builds
+                </div>
+                <div className="grid gap-3 md:grid-cols-2">
+                  {entry.teamBuilds
+                    .sort((a, b) => a.teamId.localeCompare(b.teamId))
+                    .map((team) => (
+                    <div
+                      key={`${entry.id}-${team.teamId}`}
+                      className={`rounded-lg border p-2 ${
+                        team.teamId === '200'
+                          ? 'border-rose-400/20 bg-rose-500/5'
+                          : 'border-cyan-400/20 bg-cyan-500/5'
+                      }`}
+                    >
+                      <div className="mb-2 text-xs font-semibold text-white">
+                        {team.teamName} {team.won ? '(Win)' : '(Loss)'}
+                      </div>
+                      <div className="space-y-2">
+                        {team.players.map((player, idx) => (
+                          <div key={`${team.teamId}-${player.player}-${idx}`} className="rounded-md border border-white/10 bg-slate-900/50 p-2">
+                            <div className="mb-1 flex items-center gap-2 text-xs text-slate-200">
+                              {player.championImage ? (
+                                <img
+                                  src={player.championImage}
+                                  alt={player.champion}
+                                  className="h-6 w-6 rounded object-cover"
+                                />
+                              ) : (
+                                <div className="flex h-6 w-6 items-center justify-center rounded bg-white/10 text-[10px]">
+                                  {player.champion.slice(0, 2).toUpperCase()}
+                                </div>
+                              )}
+                              <span className="font-semibold text-white">{player.champion}</span>
+                              <span className="text-slate-400">• {player.player}</span>
+                            </div>
+                            <div className="flex flex-wrap gap-1">
+                              {player.items.length ? (
+                                player.items.map((item, itemIdx) => (
+                                  <div
+                                    key={`${team.teamId}-${player.player}-${item.name}-${itemIdx}`}
+                                    className="inline-flex items-center gap-1 rounded border border-white/10 bg-white/5 px-1.5 py-1 text-[11px] text-slate-200"
+                                  >
+                                    {item.image ? (
+                                      <img src={item.image} alt={item.name} className="h-4 w-4 rounded object-cover" />
+                                    ) : (
+                                      <span className="inline-block h-4 w-4 rounded bg-white/10" />
+                                    )}
+                                    <span>{item.name}</span>
+                                  </div>
+                                ))
+                              ) : (
+                                <span className="text-[11px] text-slate-500">No items</span>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : null}
           </div>
         ))}
       </div>

@@ -14,6 +14,7 @@ export type PlayedMatchPlayer = {
   summonerName: string
   riotId?: string | null
   championName: string
+  championImage?: string | null
   championId?: string | number | null
   role?: string | null
   teamPosition?: string | null
