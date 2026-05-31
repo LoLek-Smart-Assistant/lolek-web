@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { LockKeyhole, Mail, User } from 'lucide-react'
-import { authService } from '../services'
+import { authService } from '../../services'
 
 type AuthPanelProps = {
   authMode: 'login' | 'register'
