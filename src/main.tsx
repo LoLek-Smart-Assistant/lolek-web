@@ -1,9 +1,11 @@
-
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import './styles/index.css'
 import App from './app/App.tsx'
 import itemService from './services/itemService';
+import {registerSW} from "./registerSW.ts";
+
+registerSW();
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
