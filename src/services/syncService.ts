@@ -17,6 +17,8 @@ export interface Item {
   tags: string[];
   customTags?: string[];
   image?: string | null;
+  isBoots?: boolean;
+  isLegendary?: boolean;
 }
 
 export interface SyncResponse {

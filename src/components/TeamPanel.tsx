@@ -9,9 +9,10 @@ type TeamPanelProps = {
   champItemsMap?: Record<string, (string | null)[]>
   itemImageMap?: Record<string, string>
   onRemoveItem?: (champName: string, slotIndex: number) => void
+  onOpenAdd?: (champName: string, playerIndex: number, slotIndex: number) => void
 }
 
-export function TeamPanel({ team, champItemsMap = {}, itemImageMap = {}, onRemoveItem }: TeamPanelProps) {
+export function TeamPanel({ team, champItemsMap = {}, itemImageMap = {}, onRemoveItem, onOpenAdd }: TeamPanelProps) {
   const accent =
     team.side === 'blue'
       ? 'from-cyan-400/30 to-blue-500/10 border-cyan-400/20'
@@ -39,13 +40,14 @@ export function TeamPanel({ team, champItemsMap = {}, itemImageMap = {}, onRemov
       </div>
 
       <div className="space-y-2.5">
-        {team.players.map((player) => (
+        {team.players.map((player, playerIndex) => (
           <PlayerCard
             key={`${team.name}-${player.summonerName}`}
             player={player}
             voiceAddedItems={champItemsMap[player.champion]}
             itemImageMap={itemImageMap}
             onRemoveItem={(slotIndex) => onRemoveItem?.(player.champion, slotIndex)}
+            onOpenAdd={(slotIndex) => onOpenAdd?.(player.champion, playerIndex, slotIndex)}
           />
         ))}
       </div>

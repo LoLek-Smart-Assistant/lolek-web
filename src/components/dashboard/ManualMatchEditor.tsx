@@ -189,6 +189,11 @@ export function ManualMatchEditor({ onSaved, canSyncToBackend = true, teamTempla
   const [isLoadingDraft, setIsLoadingDraft] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
   const [statusMessage, setStatusMessage] = useState<string | null>(null)
+  const [addItemModalTarget, setAddItemModalTarget] = useState<{
+    teamIndex: number
+    playerIndex: number
+    slotIndex: number
+  } | null>(null)
 
   useEffect(() => {
     let active = true
@@ -306,6 +311,32 @@ export function ManualMatchEditor({ onSaved, canSyncToBackend = true, teamTempla
       ...player,
       items: player.items.filter((_, index) => index !== itemIndex),
     }))
+  }
+
+  const insertItemAtSlot = (teamIndex: number, playerIndex: number, slotIndex: number, item: Item) => {
+    const itemName = item.itemName || item.itemId
+    updatePlayer(teamIndex, playerIndex, (player) => {
+      const newItems = [...player.items]
+      // ensure length
+      while (newItems.length < 6) newItems.push('')
+      newItems[slotIndex] = itemName
+      return { ...player, items: newItems.slice(0, 6) }
+    })
+  }
+
+  const openAddItemModal = (teamIndex: number, playerIndex: number, slotIndex: number) => {
+    setSelectedTeamIndex(teamIndex)
+    setSelectedPlayerIndex(playerIndex)
+    setAddItemModalTarget({ teamIndex, playerIndex, slotIndex })
+    setItemSearch('')
+  }
+
+  const closeAddItemModal = () => setAddItemModalTarget(null)
+
+  const handleSelectItemFromModal = (item: Item) => {
+    if (!addItemModalTarget) return
+    insertItemAtSlot(addItemModalTarget.teamIndex, addItemModalTarget.playerIndex, addItemModalTarget.slotIndex, item)
+    closeAddItemModal()
   }
 
   const handleSave = async () => {
@@ -508,6 +539,7 @@ export function ManualMatchEditor({ onSaved, canSyncToBackend = true, teamTempla
               onRemoveItem={(playerIndex, itemIndex) => handleRemoveItem(teamIndex, playerIndex, itemIndex)}
               onAddItem={handleAddItem}
               onItemSearchChange={setItemSearch}
+              onOpenAdd={openAddItemModal}
             />
           ))}
         </div>
@@ -529,6 +561,39 @@ export function ManualMatchEditor({ onSaved, canSyncToBackend = true, teamTempla
             Items catalog: {items.length}
           </div>
         </div>
+        {addItemModalTarget ? (
+          <div className="fixed inset-0 z-50 flex items-start justify-center p-6">
+            <div className="absolute inset-0 bg-black/60" onClick={closeAddItemModal} />
+            <div className="relative z-10 w-full max-w-2xl rounded-2xl bg-slate-900/95 p-4 shadow-2xl">
+              <div className="mb-3 flex items-center justify-between">
+                <h4 className="text-sm font-semibold text-white">Add item</h4>
+                <button type="button" onClick={closeAddItemModal} className="text-slate-400 hover:text-slate-200">Close</button>
+              </div>
+              <div className="mb-2">
+                <input
+                  value={itemSearch}
+                  onChange={(e) => setItemSearch(e.target.value)}
+                  placeholder="Search items by name or tag"
+                  className="w-full rounded-lg border border-white/10 bg-slate-950/80 px-3 py-2 text-sm text-white outline-none"
+                />
+              </div>
+              <div className="max-h-72 overflow-auto">
+                {filteredItems.map((item) => (
+                  <button
+                    key={item.itemId}
+                    type="button"
+                    onClick={() => handleSelectItemFromModal(item)}
+                    className="mb-1 flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left hover:bg-white/5"
+                  >
+                    <div className="flex h-8 w-8 items-center justify-center rounded bg-white/5 text-xs text-white">{item.itemName?.slice(0,2)}</div>
+                    <div className="flex-1 text-sm text-slate-200">{item.itemName}</div>
+                    <div className="text-xs text-slate-400">{item.itemId}</div>
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        ) : null}
       </div>
     </section>
   )
@@ -551,6 +616,7 @@ type ManualTeamPanelProps = {
   onRemoveItem: (playerIndex: number, itemIndex: number) => void
   onAddItem: (item: Item) => void
   onItemSearchChange: (value: string) => void
+  onOpenAdd?: (teamIndex: number, playerIndex: number, slotIndex: number) => void
 }
 
 function ManualTeamPanel({
@@ -566,6 +632,7 @@ function ManualTeamPanel({
   onRemoveItem,
   onAddItem,
   onItemSearchChange,
+  onOpenAdd,
 }: ManualTeamPanelProps) {
   const accent =
     team.side === 'blue'
@@ -595,6 +662,7 @@ function ManualTeamPanel({
           <ManualPlayerCard
             key={`${team.teamId}-${playerIndex}`}
             player={player}
+            teamIndex={teamIndex}
             isSelected={teamIndex === selectedTeamIndex && playerIndex === selectedPlayerIndex}
             filteredItems={filteredItems}
             itemSearch={itemSearch}
@@ -603,6 +671,7 @@ function ManualTeamPanel({
             onRemoveItem={(itemIndex) => onRemoveItem(playerIndex, itemIndex)}
             onAddItem={onAddItem}
             onItemSearchChange={onItemSearchChange}
+            onOpenAdd={(slotIndex) => onOpenAdd?.(teamIndex, playerIndex, slotIndex)}
           />
         ))}
       </div>
@@ -620,6 +689,8 @@ type ManualPlayerCardProps = {
   onRemoveItem: (itemIndex: number) => void
   onAddItem: (item: Item) => void
   onItemSearchChange: (value: string) => void
+  teamIndex?: number
+  onOpenAdd?: (slotIndex: number) => void
 }
 
 function ManualPlayerCard({
@@ -632,6 +703,7 @@ function ManualPlayerCard({
   onRemoveItem,
   onAddItem,
   onItemSearchChange,
+  onOpenAdd,
 }: ManualPlayerCardProps) {
   const championInitials = (player.championName || '??').slice(0, 2).toUpperCase()
 
@@ -689,7 +761,7 @@ function ManualPlayerCard({
         </div>
 
         <div className="min-w-0 flex-1">
-          <ManualItemStrip items={player.items} onRemoveItem={onRemoveItem} />
+          <ManualItemStrip items={player.items} onRemoveItem={onRemoveItem} onOpenAdd={onOpenAdd} />
         </div>
       </div>
 
@@ -754,7 +826,7 @@ type ManualItemStripProps = {
   onRemoveItem: (itemIndex: number) => void
 }
 
-function ManualItemStrip({ items, onRemoveItem }: ManualItemStripProps) {
+function ManualItemStrip({ items, onRemoveItem, onOpenAdd }: ManualItemStripProps & { onOpenAdd?: (slotIndex: number) => void }) {
   return (
     <div className="w-full pb-1">
       <div className="grid w-full grid-cols-6 gap-2">
@@ -762,17 +834,18 @@ function ManualItemStrip({ items, onRemoveItem }: ManualItemStripProps) {
           const item = items[slotIndex] ?? null
 
           return (
-            <div key={`${item || 'empty'}-${slotIndex}`} className="group relative mx-auto w-[45px] text-center">
-              <div
-                className={`flex aspect-square w-[45px] items-center justify-center overflow-hidden rounded-lg border text-[10px] font-semibold ${
-                  item
-                    ? 'border-fuchsia-400/35 bg-[radial-gradient(circle_at_top_center,_rgba(217,70,239,0.42),_rgba(59,7,100,0.88)_70%)] text-fuchsia-50 shadow-[0_0_20px_rgba(217,70,239,0.22),0_-8px_24px_rgba(217,70,239,0.18)]'
-                    : 'border-white/10 bg-[radial-gradient(circle_at_top,_rgba(34,211,238,0.16),_rgba(15,23,42,0.92))] text-slate-100'
-                }`}
-              >
-                {item ?? ''}
-              </div>
-              {item ? (
+            <div key={`${item || 'empty'}-${slotIndex}`} className="group mx-auto w-[45px] text-center">
+              <div className="relative aspect-square w-[45px]">
+                <div
+                  className={`flex h-full w-full items-center justify-center overflow-hidden rounded-lg border text-[10px] font-semibold ${
+                    item
+                      ? 'border-fuchsia-400/35 bg-[radial-gradient(circle_at_top_center,_rgba(217,70,239,0.42),_rgba(59,7,100,0.88)_70%)] text-fuchsia-50 shadow-[0_0_20px_rgba(217,70,239,0.22),0_-8px_24px_rgba(217,70,239,0.18)]'
+                      : 'border-white/10 bg-[radial-gradient(circle_at_top,_rgba(34,211,238,0.16),_rgba(15,23,42,0.92))] text-slate-100'
+                  }`}
+                >
+                  {item ?? ''}
+                </div>
+                {item ? (
                 <button
                   type="button"
                   onClick={(event) => {
@@ -788,8 +861,22 @@ function ManualItemStrip({ items, onRemoveItem }: ManualItemStripProps) {
                     <span className="absolute left-1/2 top-1/2 h-0.5 w-2.5 -translate-x-1/2 -translate-y-1/2 -rotate-45 rounded-full bg-current" />
                   </span>
                 </button>
-              ) : null}
-              <p className="mt-1 truncate text-[8px] leading-3 text-slate-400">{item || ''}</p>
+              ) : (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.preventDefault()
+                    e.stopPropagation()
+                    onOpenAdd?.(slotIndex)
+                  }}
+                  className="absolute inset-0 flex items-center justify-center text-cyan-200 hover:text-cyan-100 cursor-pointer"
+                  aria-label="Add item"
+                >
+                  <Plus className="h-4 w-4" />
+                </button>
+              )}
+              </div>
+              <p className="mt-1 truncate text-[8px] leading-3 text-slate-400">{item ?? ''}</p>
             </div>
           )
         })}

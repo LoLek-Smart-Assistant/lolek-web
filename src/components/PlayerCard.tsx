@@ -1,14 +1,16 @@
 import type { Player } from '../data/mockRiot'
 import itemService from '../services/itemService'
+import { Plus } from 'lucide-react'
 
 type PlayerCardProps = {
   player: Player
   voiceAddedItems?: (string | null)[]
   itemImageMap?: Record<string, string>
   onRemoveItem?: (slotIndex: number) => void
+  onOpenAdd?: (slotIndex: number) => void
 }
 
-export function PlayerCard({ player, voiceAddedItems = [], itemImageMap = {}, onRemoveItem }: PlayerCardProps) {
+export function PlayerCard({ player, voiceAddedItems = [], itemImageMap = {}, onRemoveItem, onOpenAdd }: PlayerCardProps) {
   const championInitials = player.champion.slice(0, 2).toUpperCase()
 
   // Merge current items and voice items into 6 slots
@@ -63,6 +65,7 @@ export function PlayerCard({ player, voiceAddedItems = [], itemImageMap = {}, on
             currentCount={player.currentItems.length}
             itemImageMap={itemImageMap}
             onRemoveItem={onRemoveItem}
+            onOpenAdd={onOpenAdd}
           />
         </div>
       </div>
@@ -77,7 +80,7 @@ type ItemStripProps = {
   onRemoveItem?: (slotIndex: number) => void
 }
 
-function ItemStrip({ items, currentCount, itemImageMap, onRemoveItem }: ItemStripProps) {
+function ItemStrip({ items, currentCount, itemImageMap, onRemoveItem, onOpenAdd }: ItemStripProps & { onOpenAdd?: (slotIndex: number) => void }) {
   return (
     <div className="w-full pb-1">
       <div className="grid w-full grid-cols-6 gap-2">
@@ -99,6 +102,7 @@ function ItemStrip({ items, currentCount, itemImageMap, onRemoveItem }: ItemStri
             itemImageMap={itemImageMap}
             slotIndex={index}
             onRemove={onRemoveItem}
+            onOpenAdd={onOpenAdd}
           />
         )
       })}
@@ -115,13 +119,28 @@ type ItemIconProps = {
   onRemove?: (slotIndex: number) => void
 }
 
-function ItemIcon({ item, variant, itemImageMap, slotIndex, onRemove }: ItemIconProps) {
+function ItemIcon({ item, variant, itemImageMap, slotIndex, onRemove, onOpenAdd }: ItemIconProps & { onOpenAdd?: (slotIndex: number) => void }) {
   if (!item) {
     return (
-      <div className="mx-auto w-[45px] text-center">
-        <div className="flex aspect-square w-[45px] items-center justify-center rounded-lg border border-white/20 bg-white/[0.02]">
-          <div className="text-[10px] text-slate-500">{''}</div>
+      <div className="group mx-auto w-[45px] text-center">
+        <div className="relative aspect-square w-[45px]">
+          <div className="flex h-full w-full items-center justify-center rounded-lg border border-white/20 bg-white/[0.02]">
+            <div className="text-[10px] text-slate-500">{''}</div>
+          </div>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.preventDefault()
+              e.stopPropagation()
+              onOpenAdd?.(slotIndex)
+            }}
+            className="absolute inset-0 flex items-center justify-center text-cyan-200 hover:text-cyan-100 cursor-pointer"
+            aria-label="Add item"
+          >
+            <Plus className="h-4 w-4" />
+          </button>
         </div>
+        <p className="mt-1 truncate text-[8px] leading-3 text-slate-400">{''}</p>
       </div>
     )
   }
