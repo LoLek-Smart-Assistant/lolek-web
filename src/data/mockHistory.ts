@@ -1,0 +1,38 @@
+export const mockHistory = [
+  {
+    id: 1,
+    result: 'Win',
+    queue: 'Ranked Solo',
+    duration: '29:41',
+    champion: 'Ahri',
+    kda: '11 / 2 / 9',
+    role: 'Mid',
+  },
+  {
+    id: 2,
+    result: 'Loss',
+    queue: 'Ranked Solo',
+    duration: '34:12',
+    champion: 'Orianna',
+    kda: '3 / 6 / 7',
+    role: 'Mid',
+  },
+  {
+    id: 3,
+    result: 'Win',
+    queue: 'Flex 5v5',
+    duration: '26:08',
+    champion: 'Jinx',
+    kda: '9 / 1 / 12',
+    role: 'ADC',
+  },
+  {
+    id: 4,
+    result: 'Win',
+    queue: 'Ranked Solo',
+    duration: '31:55',
+    champion: 'Leona',
+    kda: '2 / 4 / 18',
+    role: 'Support',
+  },
+] as const
