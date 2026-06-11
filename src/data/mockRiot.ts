@@ -5,6 +5,7 @@ export type NavItem = {
 
 export type Player = {
   champion: string
+  championImage?: string
   summonerName: string
   currentItems: string[]
   predictedItems: string[]
@@ -22,6 +23,7 @@ export type Team = {
 
 export type Recommendation = {
   champion: string
+  championImage?: string
   summonerName: string
   nextItems: string[]
   buildPath: string[]

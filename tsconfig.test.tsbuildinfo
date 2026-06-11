@@ -1,1 +1,1 @@
-{"root":["./tests/app/app.test.tsx","./tests/components/chatmessage.test.tsx","./tests/components/featurecard.test.tsx","./tests/components/matchstatuscard.test.tsx","./tests/components/playercard.test.tsx"],"version":"6.0.3"}
+{"root":["./tests/app/app.test.tsx","./tests/components/chatmessage.test.tsx","./tests/components/featurecard.test.tsx","./tests/components/matchstatuscard.test.tsx","./tests/components/playercard.test.tsx"],"errors":true,"version":"6.0.3"}

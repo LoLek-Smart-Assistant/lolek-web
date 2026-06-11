@@ -24,4 +24,6 @@ dist-ssr
 *.sw?
 
 # User created files
+explanations
+
 .env
