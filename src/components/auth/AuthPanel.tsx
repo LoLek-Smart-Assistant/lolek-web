@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { isAxiosError } from 'axios'
 import { LockKeyhole, Mail, User } from 'lucide-react'
 import { authService } from '../../services'
 
@@ -58,9 +59,24 @@ export function AuthPanel({
           email: response.data.user.email,
         })
       }
-    } catch (err) {
+    } catch (err: unknown) {
+      const responseData = isAxiosError(err) ? err.response?.data : undefined
+      const backendError =
+        responseData && typeof responseData === 'object' && 'error' in responseData
+          ? responseData.error
+          : undefined
+      const backendMessage =
+        responseData && typeof responseData === 'object' && 'message' in responseData
+          ? responseData.message
+          : undefined
       const errorMessage =
-        err instanceof Error ? err.message : 'Authentication failed'
+        typeof backendError === 'string'
+          ? backendError
+          : typeof backendMessage === 'string'
+            ? backendMessage
+            : err instanceof Error
+              ? err.message
+              : 'Authentication failed'
       setError(errorMessage)
       console.error('Auth error:', err)
     } finally {

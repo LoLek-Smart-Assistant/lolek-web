@@ -1,10 +1,7 @@
 import axios from 'axios';
 import type { AxiosError, AxiosInstance, InternalAxiosRequestConfig } from 'axios';
 
-const viteEnv = (import.meta as unknown as {
-  env?: { VITE_API_URL?: string; DEV?: boolean }
-}).env;
-const API_BASE_URL = viteEnv?.VITE_API_URL || 'http://localhost:3000';
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 
 const axiosInstance: AxiosInstance = axios.create({
   baseURL: API_BASE_URL,
@@ -48,7 +45,7 @@ function flushPendingRequests(error: unknown) {
 axiosInstance.interceptors.response.use(
   (response) => response,
   async (error: AxiosError) => {
-    if (viteEnv?.DEV) {
+    if (import.meta.env.DEV) {
       console.error('API Error:', {
         status: error.response?.status,
         data: error.response?.data,
