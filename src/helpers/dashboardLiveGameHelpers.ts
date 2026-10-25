@@ -510,9 +510,10 @@ function getChampionImageUrl(championImage?: string) {
 
   if (championImage.startsWith('/')) {
     const viteEnv = (import.meta as unknown as {
-      env?: { VITE_API_URL?: string }
+      env?: { VITE_API_URL?: string; DEV?: boolean }
     }).env
-    const apiUrl = viteEnv?.VITE_API_URL || 'http://localhost:3000'
+    const apiUrl = viteEnv?.VITE_API_URL || (viteEnv?.DEV ? 'http://localhost:3000' : '')
+    if (!apiUrl) throw new Error('VITE_API_URL is required in production.')
 
     return new URL(championImage, apiUrl).toString()
   }

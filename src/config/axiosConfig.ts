@@ -1,7 +1,11 @@
 import axios from 'axios';
 import type { AxiosError, AxiosInstance, InternalAxiosRequestConfig } from 'axios';
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+const API_BASE_URL = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? 'http://localhost:3000' : '');
+
+if (!API_BASE_URL) {
+  throw new Error('VITE_API_URL must be set to the deployed API URL for production builds.');
+}
 
 const axiosInstance: AxiosInstance = axios.create({
   baseURL: API_BASE_URL,
